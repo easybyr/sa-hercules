@@ -1,0 +1,9 @@
+.DS_Store
+.env
+.idea/
+.vscode/
+admin/admin
+admin/logs/
+admin-web/node_modules/
+admin-web/dist/
+admin-web/*.tsbuildinfo

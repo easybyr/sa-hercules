@@ -1,0 +1,18 @@
+# 测试环境：默认复用本地容器；CI可通过DATABASE_DSN覆盖为独立测试库。
+server:
+  address: ":8001"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+database:
+  default:
+    link: "mysql:hercules:hercules@tcp(127.0.0.1:3306)/hercules_admin?loc=Asia%2FShanghai&parseTime=true"
+    debug: false
+
+security:
+  jwtSecret: "hercules-test-secret"
+  jwtExpireHours: 1
+
+logger:
+  level: "all"
+  stdout: true

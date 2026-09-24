@@ -1,0 +1,76 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: hercules-admin-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hercules_admin}
+      MYSQL_USER: ${MYSQL_USER:-hercules}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-hercules}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./admin/resource/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    networks:
+      - hercules
+
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    container_name: hercules-admin-api
+    restart: unless-stopped
+    environment:
+      APP_ENV: prod
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-before-production}
+      DATABASE_DSN: "mysql:${MYSQL_USER:-hercules}:${MYSQL_PASSWORD:-hercules}@tcp(mysql:3306)/${MYSQL_DATABASE:-hercules_admin}?loc=Asia%2FShanghai&parseTime=true"
+      TZ: Asia/Shanghai
+    ports:
+      - "${ADMIN_PORT:-8000}:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - hercules
+
+  admin-web:
+    build:
+      context: ./admin-web
+      dockerfile: Dockerfile
+    container_name: hercules-admin-web
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_WEB_PORT:-5173}:80"
+    depends_on:
+      admin:
+        condition: service_healthy
+    networks:
+      - hercules
+
+volumes:
+  mysql_data:
+
+networks:
+  hercules:
+    driver: bridge

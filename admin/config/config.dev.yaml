@@ -1,0 +1,19 @@
+# 开发环境：本地后端连接 Docker 暴露的 MySQL 端口。
+server:
+  address: ":8000"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+database:
+  default:
+    link: "mysql:hercules:hercules@tcp(127.0.0.1:3306)/hercules_admin?loc=Asia%2FShanghai&parseTime=true"
+    debug: true
+
+security:
+  jwtSecret: "hercules-dev-secret-change-me"
+  jwtExpireHours: 24
+
+logger:
+  level: "all"
+  stdout: true
+

@@ -1,0 +1,18 @@
+# 默认配置。未显式选择环境时，程序默认加载 config.dev.yaml。
+server:
+  address: ":8000"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+database:
+  default:
+    link: "mysql:hercules:hercules@tcp(127.0.0.1:3306)/hercules_admin?loc=Asia%2FShanghai&parseTime=true"
+    debug: false
+
+security:
+  jwtSecret: "change-this-secret-in-production"
+  jwtExpireHours: 24
+
+logger:
+  level: "all"
+  stdout: true
