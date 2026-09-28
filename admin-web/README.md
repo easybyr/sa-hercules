@@ -1,6 +1,6 @@
 # Hercules Admin Web
 
-React + TypeScript + Vite 管理台，采用明亮、低饱和紫色视觉体系，包含响应式桌面与移动布局。
+React + TypeScript + Vite 管理台，采用明亮、低饱和视觉体系，包含响应式桌面与移动布局。
 
 ## 页面
 
