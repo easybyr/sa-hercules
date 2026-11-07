@@ -1,0 +1,20 @@
+# 生产/Compose 环境：postgres 为 docker-compose.yaml 中的服务名。
+server:
+  host: "0.0.0.0"
+  port: 8000
+  corsOrigins:
+    - "*"
+
+database:
+  dsn: "postgresql+asyncpg://hercules:hercules@postgres:5432/hercules_admin"
+  echo: false
+  poolSize: 10
+  maxOverflow: 20
+  poolRecycleSeconds: 1800
+
+security:
+  jwtSecret: "change-this-secret-before-production"
+  jwtExpireHours: 12
+
+logger:
+  level: "INFO"

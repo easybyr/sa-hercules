@@ -32,7 +32,16 @@ admin
 │   ├── resource/migrations
 │   ├── go.mod
 │   └── README.md
+├── pyadmin                      # Python3 + FastAPI + PostgreSQL 版本（与 admin 接口等价）
+│   ├── app
+│   ├── config
+│   ├── resources/migrations
+│   ├── tests
+│   ├── docker-compose.yaml
+│   ├── Dockerfile
+│   └── README.md
 ├── scripts/run.sh
+├── scripts/run-pyadmin.sh
 ├── docker-compose.yaml
 └── README.md
 ```
@@ -293,6 +302,25 @@ docker compose -f docker-compose.yaml config
 ```
 
 项目已经过真实 MySQL 集成冒烟测试，覆盖超级管理员初始化、登录、组织/用户/角色/权限创建、角色授权、用户直接授权、组织隔离、403 拒绝和数据清理。
+
+## PyAdmin：Python3 + FastAPI + PostgreSQL 版本
+
+`pyadmin` 是后端 `admin` 的等价重实现，功能与接口与 Go 版本一致，`admin-web` 无需任何改动即可对接。
+详见 [`pyadmin/README.md`](./pyadmin/README.md)。
+
+```bash
+cp pyadmin/.env.example pyadmin/.env
+./scripts/run-pyadmin.sh start
+```
+
+- 管理台：`http://127.0.0.1:5173`
+- 后端 API / Swagger：`http://127.0.0.1:8000`、`http://127.0.0.1:8000/docs`
+- PostgreSQL：`127.0.0.1:5432`（库 `hercules_admin`）
+- 默认超级管理员：`admin` / `admin`
+- 测试：`cd pyadmin && python -m pytest`
+
+两套后端使用各自的数据库（MySQL / PostgreSQL），可独立启动，互不影响；同一时间请只启动其中一套与
+`admin-web` 组合，避免端口冲突。
 
 ## 注意事项
 

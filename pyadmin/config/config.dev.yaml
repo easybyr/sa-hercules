@@ -1,0 +1,20 @@
+# 开发环境：本地后端连接 Docker 暴露的 PostgreSQL 端口。
+server:
+  host: "0.0.0.0"
+  port: 8000
+  corsOrigins:
+    - "*"
+
+database:
+  dsn: "postgresql+asyncpg://hercules:hercules@127.0.0.1:5432/hercules_admin"
+  echo: true
+  poolSize: 5
+  maxOverflow: 10
+  poolRecycleSeconds: 1800
+
+security:
+  jwtSecret: "hercules-dev-secret-change-me"
+  jwtExpireHours: 24
+
+logger:
+  level: "DEBUG"

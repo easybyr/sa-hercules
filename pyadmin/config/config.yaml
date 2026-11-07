@@ -1,0 +1,20 @@
+# 默认配置。未显式选择环境时，程序默认加载 config.dev.yaml。
+server:
+  host: "0.0.0.0"
+  port: 8000
+  corsOrigins:
+    - "*"
+
+database:
+  dsn: "postgresql+asyncpg://hercules:hercules@127.0.0.1:5432/hercules_admin"
+  echo: false
+  poolSize: 5
+  maxOverflow: 10
+  poolRecycleSeconds: 1800
+
+security:
+  jwtSecret: "change-this-secret-in-production"
+  jwtExpireHours: 24
+
+logger:
+  level: "INFO"

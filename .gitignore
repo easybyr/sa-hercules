@@ -7,3 +7,12 @@ admin/logs/
 admin-web/node_modules/
 admin-web/dist/
 admin-web/*.tsbuildinfo
+
+# pyadmin
+pyadmin/.env
+pyadmin/.venv/
+pyadmin/**/__pycache__/
+pyadmin/.pytest_cache/
+pyadmin/.ruff_cache/
+pyadmin/*.db
+pyadmin/*.sqlite3
