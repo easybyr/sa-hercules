@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/example/sa-hercules/admin/internal/consts"
 	"github.com/example/sa-hercules/admin/internal/model"
 	"github.com/example/sa-hercules/admin/pkg/response"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -8,7 +9,7 @@ import (
 
 // AssignUserRoles 分配用户角色。
 func (c *Controller) AssignUserRoles(r *ghttp.Request) {
-	claims, ok := c.authorize(r, "user.assign_role")
+	claims, ok := c.authorize(r, consts.PermissionUserAssignRole)
 	if !ok {
 		return
 	}
@@ -17,7 +18,7 @@ func (c *Controller) AssignUserRoles(r *ghttp.Request) {
 		return
 	}
 	if err := c.service.AssignUserRoles(
-		r.Context(), claims, r.Get("uid").Int64(), input.RoleIDs,
+		r.Context(), claims, r.Get("uid").Int64(), input.TenantID, input.RoleIDs,
 	); err != nil {
 		response.Error(r, err)
 		return

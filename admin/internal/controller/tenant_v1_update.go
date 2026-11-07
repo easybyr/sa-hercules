@@ -1,22 +1,23 @@
 package controller
 
 import (
+	"github.com/example/sa-hercules/admin/internal/consts"
 	"github.com/example/sa-hercules/admin/internal/model"
 	"github.com/example/sa-hercules/admin/pkg/response"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// UpdateOrganization 修改组织。
-func (c *Controller) UpdateOrganization(r *ghttp.Request) {
-	claims, ok := c.authorize(r, "organization.update")
+// UpdateTenant 修改租户。
+func (c *Controller) UpdateTenant(r *ghttp.Request) {
+	claims, ok := c.authorize(r, consts.PermissionTenantUpdate)
 	if !ok {
 		return
 	}
-	var input model.OrganizationUpdateInput
+	var input model.TenantUpdateInput
 	if !c.parse(r, &input) {
 		return
 	}
-	data, err := c.service.UpdateOrganization(
+	data, err := c.service.UpdateTenant(
 		r.Context(), claims, r.Get("id").Int64(), &input,
 	)
 	if err != nil {

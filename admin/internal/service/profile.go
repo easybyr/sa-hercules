@@ -18,11 +18,11 @@ func (s *Service) Me(ctx context.Context, claims *token.Claims) (map[string]any,
 	if user.ID == 0 {
 		return nil, apperror.New(http.StatusNotFound, "USER_NOT_FOUND", "用户不存在")
 	}
-	roles, err := s.store.UserRoles(ctx, claims.UID, user.OrgID)
+	roles, err := s.store.UserRoles(ctx, claims.UID, claims.TenantID)
 	if err != nil {
 		return nil, err
 	}
-	permissions, err := s.store.UserPermissions(ctx, claims.UID, user.OrgID)
+	permissions, err := s.store.UserPermissions(ctx, claims.UID, claims.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -47,13 +47,17 @@ func (s *Service) Me(ctx context.Context, claims *token.Claims) (map[string]any,
 			Permissions: rolePermissions,
 		})
 	}
-	organization, err := s.store.FindOrganizationByOrgID(ctx, user.OrgID)
+	tenant, err := s.store.FindTenantByID(ctx, claims.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	view, err := s.userView(ctx, user)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{
-		"user": userView(user), "roles": roles,
-		"permissions": permissions, "organization": organizationView(organization),
+		"user": view, "roles": roles,
+		"permissions": permissions, "tenant": tenantView(tenant),
 		"role_accesses": roleAccesses, "is_super": claims.IsSuper,
 	}, nil
 }

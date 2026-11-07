@@ -6,7 +6,12 @@ from typing import List, Optional, Tuple
 
 from sqlalchemy import delete, func, or_, select, update
 
-from app.model import Permission, Role, RolePermission
+from app.model import (
+    Permission,
+    PermissionOperationLog,
+    Role,
+    RolePermission,
+)
 from app.repository.store_base import StoreBase
 from app.schema.pagination import PageRequest
 
@@ -67,13 +72,23 @@ class PermissionRepository(StoreBase):
             )
             return result.scalars().first()
 
-    async def create_permission(self, permission: Permission) -> Permission:
-        """新建权限。"""
+    async def create_permission(
+        self,
+        permission: Permission,
+        operation: Optional[dict] = None,
+    ) -> Permission:
+        """原子新建权限并记录操作日志。"""
 
         async with self.transaction() as session:
             session.add(permission)
             await session.flush()
             await session.refresh(permission)
+            if operation is not None:
+                session.add(
+                    PermissionOperationLog(
+                        **{**operation, "target_id": permission.id}
+                    )
+                )
         return permission
 
     async def update_permission(
@@ -83,6 +98,7 @@ class PermissionRepository(StoreBase):
         name: str,
         description: str,
         version: int,
+        operation: Optional[dict] = None,
     ) -> int:
         """按 version 乐观锁更新权限，返回受影响行数。"""
 
@@ -96,9 +112,16 @@ class PermissionRepository(StoreBase):
                 )
                 .values(name=name, description=description, version=version + 1)
             )
-            return int(result.rowcount or 0)
+            affected = int(result.rowcount or 0)
+            if not affected:
+                return 0
+            if operation is not None:
+                session.add(PermissionOperationLog(**operation))
+            return affected
 
-    async def delete_permission(self, org_id: int, code: str) -> None:
+    async def delete_permission(
+        self, org_id: int, code: str, operation: Optional[dict] = None
+    ) -> None:
         """删除权限，并清理组织内各角色对它的关联。"""
 
         async with self.transaction() as session:
@@ -110,8 +133,10 @@ class PermissionRepository(StoreBase):
                     .where(RolePermission.role_id.in_(ids))
                     .where(RolePermission.permission_code == code)
                 )
-            await session.execute(
+            result = await session.execute(
                 delete(Permission)
                 .where(Permission.org_id == org_id)
                 .where(Permission.code == code)
             )
+            if result.rowcount and operation is not None:
+                session.add(PermissionOperationLog(**operation))

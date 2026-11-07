@@ -1,17 +1,18 @@
 package controller
 
 import (
+	"github.com/example/sa-hercules/admin/internal/consts"
 	"github.com/example/sa-hercules/admin/internal/middleware"
 	"github.com/example/sa-hercules/admin/pkg/response"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// OrganizationTree 获取组织树。
-func (c *Controller) OrganizationTree(r *ghttp.Request) {
-	if _, ok := c.authorize(r, "organization.read"); !ok {
+// TenantTree 获取租户树。
+func (c *Controller) TenantTree(r *ghttp.Request) {
+	if _, ok := c.authorize(r, consts.PermissionTenantRead); !ok {
 		return
 	}
-	data, err := c.service.OrganizationTree(
+	data, err := c.service.TenantTree(
 		r.Context(),
 		middleware.Claims(r),
 		r.Get("q").String(),

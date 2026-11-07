@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 from sqlalchemy import delete, select, update
 
-from app.model import Permission, Role, RolePermission, User, UserRole
+from app.model import (
+    Permission,
+    PermissionOperationLog,
+    Role,
+    RolePermission,
+    User,
+    UserRole,
+)
 from app.pkg.idgen import personal_role_id
 from app.repository.store_base import StoreBase
 
@@ -51,7 +58,12 @@ class AccessRepository(StoreBase):
             result = await session.execute(statement)
             return list(result.scalars().all())
 
-    async def replace_user_roles(self, uid: int, role_ids: Sequence[int]) -> None:
+    async def replace_user_roles(
+        self,
+        uid: int,
+        role_ids: Sequence[int],
+        operation: Optional[dict] = None,
+    ) -> None:
         """原子替换用户普通角色，并清空旧的用户直接权限。"""
 
         async with self.transaction() as session:
@@ -65,6 +77,8 @@ class AccessRepository(StoreBase):
                     RolePermission.role_id == personal_role_id(uid)
                 )
             )
+            if operation is not None:
+                session.add(PermissionOperationLog(**operation))
 
     async def ensure_user_role(self, uid: int, role_id: int) -> None:
         """确保用户角色关联存在（先查询再插入）。"""
@@ -80,7 +94,10 @@ class AccessRepository(StoreBase):
             session.add(UserRole(uid=uid, role_id=role_id, version=1))
 
     async def replace_role_permissions(
-        self, role_id: int, codes: Sequence[str]
+        self,
+        role_id: int,
+        codes: Sequence[str],
+        operation: Optional[dict] = None,
     ) -> None:
         """原子替换角色权限。"""
 
@@ -94,6 +111,8 @@ class AccessRepository(StoreBase):
                         role_id=role_id, permission_code=code, version=1
                     )
                 )
+            if operation is not None:
+                session.add(PermissionOperationLog(**operation))
 
     async def role_permissions(self, role_id: int) -> List[str]:
         """查询角色权限编码，按编码升序。"""
@@ -107,7 +126,9 @@ class AccessRepository(StoreBase):
             values = await session.scalars(statement)
             return [str(item) for item in values.all()]
 
-    async def set_user_organization(self, uid: int, org_id: int) -> None:
+    async def set_user_organization(
+        self, uid: int, org_id: int, operation: Optional[dict] = None
+    ) -> None:
         """修改用户组织，并清理旧组织下的角色与个人直接权限。"""
 
         personal_id = personal_role_id(uid)
@@ -122,3 +143,6 @@ class AccessRepository(StoreBase):
                 .where(User.uid == uid)
                 .values(org_id=org_id, version=User.version + 1)
             )
+            if operation is not None:
+                session.add(PermissionOperationLog(**operation))
+

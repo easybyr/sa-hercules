@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/example/sa-hercules/admin/pkg/idgen"
 )
@@ -26,36 +27,38 @@ func (s *Service) generateUID(ctx context.Context) (int64, error) {
 	return 0, fmt.Errorf("生成唯一UID失败")
 }
 
-func (s *Service) generateOrgID(ctx context.Context) (int64, error) {
+func (s *Service) generateTenantCode(ctx context.Context) (string, error) {
 	for attempt := 0; attempt < identifierAttempts; attempt++ {
-		orgID, err := idgen.Numeric(8)
+		codeValue, err := idgen.Numeric(8)
 		if err != nil {
-			return 0, err
+			return "", err
 		}
-		organization, err := s.store.FindOrganizationByOrgID(ctx, orgID)
+		code := strconv.FormatInt(codeValue, 10)
+		tenant, err := s.store.FindTenantByCode(ctx, code)
 		if err != nil {
-			return 0, err
+			return "", err
 		}
-		if organization.ID == 0 {
-			return orgID, nil
+		if tenant.ID == 0 {
+			return code, nil
 		}
 	}
-	return 0, fmt.Errorf("生成唯一组织ID失败")
+	return "", fmt.Errorf("生成唯一租户编码失败")
 }
 
-func (s *Service) generateRoleID(ctx context.Context) (int64, error) {
+func (s *Service) generateRoleCode(ctx context.Context, tenantID int64) (string, error) {
 	for attempt := 0; attempt < identifierAttempts; attempt++ {
 		roleID, err := idgen.Numeric(10)
 		if err != nil {
-			return 0, err
+			return "", err
 		}
-		role, err := s.store.FindRoleByRoleID(ctx, roleID)
+		code := strconv.FormatInt(roleID, 10)
+		role, err := s.store.FindRoleByCode(ctx, tenantID, code)
 		if err != nil {
-			return 0, err
+			return "", err
 		}
 		if role.ID == 0 {
-			return roleID, nil
+			return code, nil
 		}
 	}
-	return 0, fmt.Errorf("生成唯一角色ID失败")
+	return "", fmt.Errorf("生成唯一角色编码失败")
 }

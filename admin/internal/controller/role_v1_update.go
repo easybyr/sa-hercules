@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/example/sa-hercules/admin/internal/consts"
 	"github.com/example/sa-hercules/admin/internal/model"
 	"github.com/example/sa-hercules/admin/pkg/response"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -8,7 +9,7 @@ import (
 
 // UpdateRole 修改角色。
 func (c *Controller) UpdateRole(r *ghttp.Request) {
-	claims, ok := c.authorize(r, "role.update")
+	claims, ok := c.authorize(r, consts.PermissionRoleUpdate)
 	if !ok {
 		return
 	}
@@ -17,7 +18,7 @@ func (c *Controller) UpdateRole(r *ghttp.Request) {
 		return
 	}
 	data, err := c.service.UpdateRole(
-		r.Context(), claims, r.Get("orgId").Int64(), r.Get("roleId").Int64(), &input,
+		r.Context(), claims, r.Get("tenantId").Int64(), r.Get("roleId").Int64(), &input,
 	)
 	if err != nil {
 		response.Error(r, err)

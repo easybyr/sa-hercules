@@ -16,7 +16,7 @@ func TestIssueAndParse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claims.UID != 123 || claims.OrgID != 456 || claims.Username != "tester" {
+	if claims.UID != 123 || claims.TenantID != 456 || claims.Username != "tester" {
 		t.Fatalf("unexpected claims: %#v", claims)
 	}
 }

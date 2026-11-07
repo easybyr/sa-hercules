@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/example/sa-hercules/admin/internal/consts"
 	"github.com/example/sa-hercules/admin/internal/model"
 	"github.com/example/sa-hercules/admin/pkg/response"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -8,7 +9,7 @@ import (
 
 // UpdatePermission 修改权限。
 func (c *Controller) UpdatePermission(r *ghttp.Request) {
-	claims, ok := c.authorize(r, "permission.update")
+	claims, ok := c.authorize(r, consts.PermissionPermissionUpdate)
 	if !ok {
 		return
 	}
@@ -17,7 +18,7 @@ func (c *Controller) UpdatePermission(r *ghttp.Request) {
 		return
 	}
 	data, err := c.service.UpdatePermission(
-		r.Context(), claims, r.Get("orgId").Int64(), r.Get("code").String(), &input,
+		r.Context(), claims, r.Get("tenantId").Int64(), r.Get("code").String(), &input,
 	)
 	if err != nil {
 		response.Error(r, err)

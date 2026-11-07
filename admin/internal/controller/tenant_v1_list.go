@@ -1,17 +1,18 @@
 package controller
 
 import (
+	"github.com/example/sa-hercules/admin/internal/consts"
 	"github.com/example/sa-hercules/admin/pkg/response"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// ListOrganizations 分页查询组织。
-func (c *Controller) ListOrganizations(r *ghttp.Request) {
-	claims, ok := c.authorize(r, "organization.read")
+// ListTenants 分页查询租户。
+func (c *Controller) ListTenants(r *ghttp.Request) {
+	claims, ok := c.authorize(r, consts.PermissionTenantRead)
 	if !ok {
 		return
 	}
-	data, err := c.service.ListOrganizations(
+	data, err := c.service.ListTenants(
 		r.Context(),
 		claims,
 		r.Get("q").String(),

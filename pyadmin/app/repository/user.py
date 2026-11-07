@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 
 from sqlalchemy import delete, func, or_, select, update
 
-from app.model import Role, RolePermission, User, UserRole
+from app.model import PermissionOperationLog, Role, RolePermission, User, UserRole
 from app.pkg.idgen import personal_role_id
 from app.repository.store_base import StoreBase
 from app.schema.pagination import PageRequest
@@ -88,7 +88,9 @@ class UserRepository(StoreBase):
             )
             return int(result.rowcount or 0)
 
-    async def delete_user(self, uid: int) -> None:
+    async def delete_user(
+        self, uid: int, operations: Optional[List[dict]] = None
+    ) -> None:
         """删除用户，并清理角色关联与个人直接权限角色。"""
 
         personal_id = personal_role_id(uid)
@@ -99,3 +101,5 @@ class UserRepository(StoreBase):
             )
             await session.execute(delete(Role).where(Role.role_id == personal_id))
             await session.execute(delete(User).where(User.uid == uid))
+            for operation in operations or []:
+                session.add(PermissionOperationLog(**operation))

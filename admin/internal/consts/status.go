@@ -7,16 +7,18 @@ const (
 	// StatusNormal 正常。
 	StatusNormal Status = 1
 	// StatusDisabled 禁用。
-	StatusDisabled Status = 2
+	StatusDisabled Status = 0
 )
 
 const (
 	// SuperAdminUID 超级管理员UID。
 	SuperAdminUID int64 = 1000000000
-	// SuperAdminOrgID 超级管理员组织ID。
-	SuperAdminOrgID int64 = 10000000
-	// SuperAdminRoleID 超级管理员角色ID。
-	SuperAdminRoleID int64 = 10000000
+	// SuperAdminTenantCode 是系统管理租户的稳定业务编码。
+	SuperAdminTenantCode = "10000000"
+	// SuperAdminRoleCode 超级管理员角色编码。
+	SuperAdminRoleCode = "super_admin"
+	// TenantAdminRoleCode 租户管理员角色编码。
+	TenantAdminRoleCode = "tenant_admin"
 )
 
 // String 返回用于接口输出的状态名称。

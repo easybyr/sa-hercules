@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/example/sa-hercules/admin/internal/consts"
 	"github.com/example/sa-hercules/admin/internal/model"
 	"github.com/example/sa-hercules/admin/pkg/response"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -8,7 +9,7 @@ import (
 
 // CreatePermission 新建权限。
 func (c *Controller) CreatePermission(r *ghttp.Request) {
-	claims, ok := c.authorize(r, "permission.create")
+	claims, ok := c.authorize(r, consts.PermissionPermissionCreate)
 	if !ok {
 		return
 	}

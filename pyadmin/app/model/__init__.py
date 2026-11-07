@@ -6,6 +6,7 @@ from app.model.access import RolePermission, UserRole
 from app.model.base import Base
 from app.model.organization import Organization
 from app.model.permission import Permission
+from app.model.permission_operation import PermissionOperationLog
 from app.model.role import Role
 from app.model.user import User
 
@@ -13,6 +14,7 @@ __all__ = [
     "Base",
     "Organization",
     "Permission",
+    "PermissionOperationLog",
     "Role",
     "RolePermission",
     "User",

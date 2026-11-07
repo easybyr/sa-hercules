@@ -6,7 +6,7 @@ from typing import List, Optional, Sequence, Tuple
 
 from sqlalchemy import delete, func, select, update
 
-from app.model import Role, RolePermission, UserRole
+from app.model import PermissionOperationLog, Role, RolePermission, UserRole
 from app.repository.store_base import StoreBase
 from app.schema.pagination import PageRequest
 
@@ -83,6 +83,7 @@ class RoleRepository(StoreBase):
         self,
         role: Role,
         permission_codes: Sequence[str],
+        operation: Optional[dict] = None,
     ) -> Role:
         """原子创建角色及其权限关联。"""
 
@@ -93,6 +94,12 @@ class RoleRepository(StoreBase):
                 session.add(RolePermission(role_id=role.role_id, permission_code=code, version=1))
             await session.flush()
             await session.refresh(role)
+            if operation is not None:
+                session.add(
+                    PermissionOperationLog(
+                        **{**operation, "target_id": role.role_id}
+                    )
+                )
         return role
 
     async def update_role_with_permissions(
@@ -103,6 +110,7 @@ class RoleRepository(StoreBase):
         description: str,
         version: int,
         permission_codes: Sequence[str],
+        operation: Optional[dict] = None,
     ) -> int:
         """按 version 乐观锁原子更新角色与权限关联，返回受影响行数。"""
 
@@ -120,9 +128,13 @@ class RoleRepository(StoreBase):
             )
             for code in permission_codes:
                 session.add(RolePermission(role_id=role_id, permission_code=code, version=1))
+            if operation is not None:
+                session.add(PermissionOperationLog(**operation))
         return affected
 
-    async def delete_role(self, org_id: int, role_id: int) -> None:
+    async def delete_role(
+        self, org_id: int, role_id: int, operation: Optional[dict] = None
+    ) -> None:
         """删除角色及用户角色、角色权限关联。"""
 
         async with self.transaction() as session:
@@ -133,3 +145,5 @@ class RoleRepository(StoreBase):
             await session.execute(
                 delete(Role).where(Role.org_id == org_id, Role.role_id == role_id)
             )
+            if operation is not None:
+                session.add(PermissionOperationLog(**operation))

@@ -1,14 +1,15 @@
 package controller
 
 import (
+	"github.com/example/sa-hercules/admin/internal/consts"
 	"github.com/example/sa-hercules/admin/internal/model"
 	"github.com/example/sa-hercules/admin/pkg/response"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// UpdateOrgMember 修改组织成员。
-func (c *Controller) UpdateOrgMember(r *ghttp.Request) {
-	claims, ok := c.authorize(r, "user.update")
+// UpdateTenantMember 修改租户成员。
+func (c *Controller) UpdateTenantMember(r *ghttp.Request) {
+	claims, ok := c.authorize(r, consts.PermissionUserUpdate)
 	if !ok {
 		return
 	}

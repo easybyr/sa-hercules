@@ -41,9 +41,3 @@ func Password(length int) (string, error) {
 	}
 	return string(result), nil
 }
-
-// PersonalRoleID 根据UID生成稳定的个人角色ID。
-// 负数角色ID仅供系统内部的用户直接权限分配使用。
-func PersonalRoleID(uid int64) int64 {
-	return -uid
-}

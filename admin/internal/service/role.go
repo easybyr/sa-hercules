@@ -15,15 +15,15 @@ import (
 func (s *Service) ListRoles(
 	ctx context.Context,
 	claims *token.Claims,
-	requestedOrgID int64,
+	requestedTenantID int64,
 	keyword string,
 	page model.PageRequest,
 ) (*model.PageResult[*model.Role], error) {
-	orgID, err := listOrganizationID(claims, requestedOrgID)
+	tenantID, err := listTenantID(claims, requestedTenantID)
 	if err != nil {
 		return nil, err
 	}
-	items, total, err := s.store.ListRoles(ctx, orgID, false, strings.TrimSpace(keyword), page)
+	items, total, err := s.store.ListRoles(ctx, tenantID, true, strings.TrimSpace(keyword), page)
 	if err != nil {
 		return nil, err
 	}
@@ -34,17 +34,17 @@ func (s *Service) ListRoles(
 func (s *Service) RoleDetail(
 	ctx context.Context,
 	claims *token.Claims,
-	orgID int64,
+	tenantID int64,
 	roleID int64,
 ) (map[string]any, error) {
-	if err := s.RequireOrg(claims, orgID); err != nil {
+	if err := s.RequireTenant(claims, tenantID); err != nil {
 		return nil, err
 	}
-	role, err := s.store.FindRole(ctx, orgID, roleID)
+	role, err := s.store.FindRole(ctx, tenantID, roleID)
 	if err != nil {
 		return nil, err
 	}
-	if role.ID == 0 || role.RoleID <= 0 {
+	if role.ID == 0 {
 		return nil, notFound("角色")
 	}
 	codes, err := s.store.RolePermissions(ctx, roleID)
@@ -60,24 +60,24 @@ func (s *Service) CreateRole(
 	claims *token.Claims,
 	input *model.RoleInput,
 ) (*model.Role, error) {
-	if err := s.RequireOrg(claims, input.OrgID); err != nil {
+	if err := s.RequireTenant(claims, input.TenantID); err != nil {
 		return nil, err
 	}
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return nil, apperror.New(http.StatusBadRequest, "ROLE_NAME_REQUIRED", "角色名称不能为空")
 	}
-	organization, err := s.store.FindOrganizationByOrgID(ctx, input.OrgID)
+	tenant, err := s.store.FindTenantByID(ctx, input.TenantID)
 	if err != nil {
 		return nil, err
 	}
-	if organization.ID == 0 {
-		return nil, apperror.New(http.StatusBadRequest, "INVALID_ORGANIZATION", "组织不存在")
+	if tenant.ID == 0 {
+		return nil, apperror.New(http.StatusBadRequest, "INVALID_TENANT", "租户不存在")
 	}
-	if err = s.validatePermissionCodes(ctx, input.OrgID, input.PermissionCodes); err != nil {
+	if err = s.validatePermissionCodes(ctx, input.TenantID, input.PermissionCodes); err != nil {
 		return nil, err
 	}
-	existing, err := s.store.FindRoleByName(ctx, input.OrgID, name)
+	existing, err := s.store.FindRoleByName(ctx, input.TenantID, name)
 	if err != nil {
 		return nil, err
 	}
@@ -85,18 +85,26 @@ func (s *Service) CreateRole(
 		return nil, apperror.New(
 			http.StatusConflict,
 			"ROLE_NAME_EXISTS",
-			"组织内角色名称已存在，请重新输入角色名称",
+			"租户内角色名称已存在，请重新输入角色名称",
 		)
 	}
-	roleID, err := s.generateRoleID(ctx)
+	roleCode, err := s.generateRoleCode(ctx, input.TenantID)
 	if err != nil {
 		return nil, err
 	}
 	item := &model.Role{
-		RoleID: roleID, Name: name, Description: input.Description,
-		OrgID: input.OrgID, Version: 1,
+		Code: roleCode, Name: name, Description: input.Description,
+		TenantID: input.TenantID, Status: 1, Version: 1,
 	}
-	item.ID, err = s.store.CreateRoleWithPermissions(ctx, item, input.PermissionCodes)
+	operation, err := permissionOperationLog(
+		claims.UID, input.TenantID, "role", 0, "role.create", nil,
+		map[string]any{"role": item, "permission_codes": input.PermissionCodes},
+	)
+	if err != nil {
+		return nil, err
+	}
+	item.ID, err = s.store.CreateRoleWithPermissionsAndLog(ctx, item, input.PermissionCodes, operation)
+	item.RoleID = item.ID
 	return item, err
 }
 
@@ -104,49 +112,62 @@ func (s *Service) CreateRole(
 func (s *Service) UpdateRole(
 	ctx context.Context,
 	claims *token.Claims,
-	orgID int64,
+	tenantID int64,
 	roleID int64,
 	input *model.RoleUpdateInput,
 ) (*model.Role, error) {
-	if err := s.RequireOrg(claims, orgID); err != nil {
+	if err := s.RequireTenant(claims, tenantID); err != nil {
 		return nil, err
 	}
-	item, err := s.store.FindRole(ctx, orgID, roleID)
+	item, err := s.store.FindRole(ctx, tenantID, roleID)
 	if err != nil {
 		return nil, err
 	}
-	if item.ID == 0 || roleID <= 0 {
+	if item.ID == 0 {
 		return nil, notFound("角色")
 	}
-	if roleID == consts.SuperAdminRoleID {
+	if item.Code == consts.SuperAdminRoleCode || item.IsSystem != 0 {
 		return nil, apperror.New(http.StatusBadRequest, "PROTECTED_RESOURCE", "不能修改超级管理员角色")
 	}
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return nil, apperror.New(http.StatusBadRequest, "ROLE_NAME_REQUIRED", "角色名称不能为空")
 	}
-	existing, err := s.store.FindRoleByName(ctx, orgID, name)
+	existing, err := s.store.FindRoleByName(ctx, tenantID, name)
 	if err != nil {
 		return nil, err
 	}
-	if existing.ID != 0 && existing.RoleID != roleID {
+	if existing.ID != 0 && existing.ID != roleID {
 		return nil, apperror.New(
 			http.StatusConflict,
 			"ROLE_NAME_EXISTS",
-			"组织内角色名称已存在，请重新输入角色名称",
+			"租户内角色名称已存在，请重新输入角色名称",
 		)
+	}
+	previousCodes, err := s.store.RolePermissions(ctx, roleID)
+	if err != nil {
+		return nil, err
 	}
 	permissionCodes := input.PermissionCodes
 	if permissionCodes == nil {
-		permissionCodes, err = s.store.RolePermissions(ctx, roleID)
-		if err != nil {
-			return nil, err
-		}
-	} else if err = s.validatePermissionCodes(ctx, orgID, permissionCodes); err != nil {
+		permissionCodes = previousCodes
+	} else if err = s.validatePermissionCodes(ctx, tenantID, permissionCodes); err != nil {
 		return nil, err
 	}
-	affected, err := s.store.UpdateRoleWithPermissions(
-		ctx, orgID, roleID, name, input.Description, input.Version, permissionCodes,
+	after := *item
+	after.Name = name
+	after.Description = input.Description
+	after.Version = input.Version + 1
+	operation, err := permissionOperationLog(
+		claims.UID, tenantID, "role", roleID, "role.update",
+		map[string]any{"role": item, "permission_codes": previousCodes},
+		map[string]any{"role": &after, "permission_codes": permissionCodes},
+	)
+	if err != nil {
+		return nil, err
+	}
+	affected, err := s.store.UpdateRoleWithPermissionsAndLog(
+		ctx, tenantID, roleID, name, input.Description, input.Version, permissionCodes, operation,
 	)
 	if err != nil {
 		return nil, err
@@ -164,45 +185,71 @@ func (s *Service) UpdateRole(
 func (s *Service) DeleteRole(
 	ctx context.Context,
 	claims *token.Claims,
-	orgID int64,
+	tenantID int64,
 	roleID int64,
 ) error {
-	if err := s.RequireOrg(claims, orgID); err != nil {
+	if err := s.RequireTenant(claims, tenantID); err != nil {
 		return err
 	}
-	if roleID == consts.SuperAdminRoleID || roleID <= 0 {
-		return apperror.New(http.StatusBadRequest, "PROTECTED_RESOURCE", "不能删除系统角色")
-	}
-	role, err := s.store.FindRole(ctx, orgID, roleID)
+	role, err := s.store.FindRole(ctx, tenantID, roleID)
 	if err != nil {
 		return err
 	}
 	if role.ID == 0 {
 		return notFound("角色")
 	}
-	return s.store.DeleteRole(ctx, orgID, roleID)
+	if role.Code == consts.SuperAdminRoleCode || role.IsSystem != 0 {
+		return apperror.New(http.StatusBadRequest, "PROTECTED_RESOURCE", "不能删除系统角色")
+	}
+	codes, err := s.store.RolePermissions(ctx, roleID)
+	if err != nil {
+		return err
+	}
+	operation, err := permissionOperationLog(
+		claims.UID, tenantID, "role", roleID, "role.delete",
+		map[string]any{"role": role, "permission_codes": codes}, nil,
+	)
+	if err != nil {
+		return err
+	}
+	return s.store.DeleteRoleWithLog(ctx, tenantID, roleID, operation)
 }
 
 // AssignRolePermissions 替换角色权限。
 func (s *Service) AssignRolePermissions(
 	ctx context.Context,
 	claims *token.Claims,
-	orgID int64,
+	tenantID int64,
 	roleID int64,
 	codes []string,
 ) error {
-	if err := s.RequireOrg(claims, orgID); err != nil {
+	if err := s.RequireTenant(claims, tenantID); err != nil {
 		return err
 	}
-	role, err := s.store.FindRole(ctx, orgID, roleID)
+	role, err := s.store.FindRole(ctx, tenantID, roleID)
 	if err != nil {
 		return err
 	}
-	if role.ID == 0 || roleID <= 0 {
+	if role.ID == 0 {
 		return notFound("角色")
 	}
-	if err = s.validatePermissionCodes(ctx, orgID, codes); err != nil {
+	if role.IsSystem != 0 {
+		return apperror.New(http.StatusBadRequest, "PROTECTED_RESOURCE", "不能修改系统角色")
+	}
+	if err = s.validatePermissionCodes(ctx, tenantID, codes); err != nil {
 		return err
 	}
-	return s.store.ReplaceRolePermissions(ctx, roleID, codes)
+	previousCodes, err := s.store.RolePermissions(ctx, roleID)
+	if err != nil {
+		return err
+	}
+	operation, err := permissionOperationLog(
+		claims.UID, tenantID, "role", roleID, "role.permissions.replace",
+		map[string]any{"permission_codes": previousCodes},
+		map[string]any{"permission_codes": codes},
+	)
+	if err != nil {
+		return err
+	}
+	return s.store.ReplaceRolePermissionsWithLog(ctx, roleID, codes, operation)
 }

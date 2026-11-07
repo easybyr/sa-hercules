@@ -16,7 +16,7 @@ from app.schema.organization import OrganizationView
 from app.schema.pagination import PageRequest, PageResult
 from app.schema.user import UserCreateRequest, UserCreateResult, UserUpdateRequest, UserView
 from app.service.access import AccessGuard
-from app.service.helpers import ensure_personal_role
+from app.service.helpers import ensure_personal_role, permission_operation_log
 from app.service.identifier import IdentifierGenerator
 from app.service.permission import validate_permission_codes
 from app.service.views import (
@@ -217,7 +217,21 @@ class UserService:
         if user is None:
             raise apperror.not_found("用户")
         self._guard.require_org(claims, user.org_id)
-        await self._store.delete_user(uid)
+        roles = await self._store.user_roles(uid, user.org_id)
+        direct_codes = await self._store.role_permissions(idgen.personal_role_id(uid))
+        operation = permission_operation_log(
+            claims.uid,
+            user.org_id,
+            "user",
+            uid,
+            "user.delete",
+            {
+                "role_ids": [role.role_id for role in roles],
+                "direct_permission_codes": direct_codes,
+            },
+            None,
+        )
+        await self._store.delete_user(uid, [operation])
 
     async def assign_roles(self, claims: Claims, uid: int, role_ids: List[int]) -> None:
         """替换用户的普通角色集合，并清理旧的用户直接权限。"""
@@ -239,7 +253,21 @@ class UserService:
                 raise apperror.bad_request(
                     "INVALID_ROLE", "角色不存在或不属于用户组织"
                 )
-        await self._store.replace_user_roles(uid, role_ids)
+        previous_roles = await self._store.user_roles(uid, user.org_id)
+        direct_codes = await self._store.role_permissions(idgen.personal_role_id(uid))
+        operation = permission_operation_log(
+            claims.uid,
+            user.org_id,
+            "user",
+            uid,
+            "user.roles.replace",
+            {
+                "role_ids": [role.role_id for role in previous_roles],
+                "direct_permission_codes": direct_codes,
+            },
+            {"role_ids": role_ids, "direct_permission_codes": []},
+        )
+        await self._store.replace_user_roles(uid, role_ids, operation)
 
     async def assign_permissions(
         self, claims: Claims, uid: int, codes: List[str]
@@ -253,7 +281,17 @@ class UserService:
         await validate_permission_codes(self._store, user.org_id, codes)
 
         role_id = await ensure_personal_role(self._store, user)
-        await self._store.replace_role_permissions(role_id, codes)
+        previous_codes = await self._store.role_permissions(role_id)
+        operation = permission_operation_log(
+            claims.uid,
+            user.org_id,
+            "user",
+            uid,
+            "user.permissions.replace",
+            {"permission_codes": previous_codes},
+            {"permission_codes": codes},
+        )
+        await self._store.replace_role_permissions(role_id, codes, operation)
 
     async def assign_organization(
         self, claims: Claims, uid: int, org_id: int
@@ -275,4 +313,19 @@ class UserService:
         user = await self._store.find_user_by_uid(uid)
         if user is None:
             raise apperror.not_found("用户")
-        await self._store.set_user_organization(uid, org_id)
+        roles = await self._store.user_roles(uid, user.org_id)
+        direct_codes = await self._store.role_permissions(idgen.personal_role_id(uid))
+        operation = permission_operation_log(
+            claims.uid,
+            user.org_id,
+            "user",
+            uid,
+            "user.organization.change",
+            {
+                "org_id": user.org_id,
+                "role_ids": [role.role_id for role in roles],
+                "direct_permission_codes": direct_codes,
+            },
+            {"org_id": org_id, "role_ids": [], "direct_permission_codes": []},
+        )
+        await self._store.set_user_organization(uid, org_id, operation)

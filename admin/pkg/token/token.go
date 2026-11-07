@@ -10,7 +10,7 @@ import (
 // Claims 是访问令牌声明。
 type Claims struct {
 	UID      int64  `json:"uid"`
-	OrgID    int64  `json:"org_id"`
+	TenantID int64  `json:"tenant_id"`
 	IsSuper  bool   `json:"is_super"`
 	Username string `json:"username"`
 	jwt.RegisteredClaims
@@ -33,11 +33,11 @@ func (m *Manager) ExpiresIn() int64 {
 }
 
 // Issue 签发访问令牌。
-func (m *Manager) Issue(uid int64, orgID int64, username string, isSuper bool) (string, error) {
+func (m *Manager) Issue(uid int64, tenantID int64, username string, isSuper bool) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		UID:      uid,
-		OrgID:    orgID,
+		TenantID: tenantID,
 		Username: username,
 		IsSuper:  isSuper,
 		RegisteredClaims: jwt.RegisteredClaims{

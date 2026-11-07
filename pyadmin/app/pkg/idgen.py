@@ -31,3 +31,5 @@ def personal_role_id(uid: int) -> int:
     """用户直接权限使用的隐藏个人角色 ID（负数，供系统内部使用）。"""
 
     return -int(uid)
+
+

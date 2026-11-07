@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/example/sa-hercules/admin/internal/consts"
 	"github.com/example/sa-hercules/admin/internal/model"
 	"github.com/example/sa-hercules/admin/pkg/response"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -8,7 +9,7 @@ import (
 
 // AssignUserPermissions 分配用户直接权限。
 func (c *Controller) AssignUserPermissions(r *ghttp.Request) {
-	claims, ok := c.authorize(r, "user.assign_permission")
+	claims, ok := c.authorize(r, consts.PermissionUserAssignPermission)
 	if !ok {
 		return
 	}
@@ -17,7 +18,7 @@ func (c *Controller) AssignUserPermissions(r *ghttp.Request) {
 		return
 	}
 	if err := c.service.AssignUserPermissions(
-		r.Context(), claims, r.Get("uid").Int64(), input.PermissionCodes,
+		r.Context(), claims, r.Get("uid").Int64(), input.TenantID, input.PermissionCodes,
 	); err != nil {
 		response.Error(r, err)
 		return

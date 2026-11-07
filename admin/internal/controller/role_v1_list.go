@@ -1,20 +1,21 @@
 package controller
 
 import (
+	"github.com/example/sa-hercules/admin/internal/consts"
 	"github.com/example/sa-hercules/admin/pkg/response"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 // ListRoles 查询角色。
 func (c *Controller) ListRoles(r *ghttp.Request) {
-	claims, ok := c.authorize(r, "role.read")
+	claims, ok := c.authorize(r, consts.PermissionRoleRead)
 	if !ok {
 		return
 	}
 	data, err := c.service.ListRoles(
 		r.Context(),
 		claims,
-		r.Get("org_id").Int64(),
+		r.Get("tenant_id").Int64(),
 		r.Get("q").String(),
 		pageRequest(r),
 	)

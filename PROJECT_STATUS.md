@@ -47,7 +47,7 @@ Hercules Admin 已完成后台管理系统的主要功能闭环，可以视为�
 
 ### 2.3 数据与部署
 
-数据库包含 `organization`、`user`、`permission`、`role`、`user_role` 和 `role_permission` 六张表。各表统一包含自增主键、业务字段、`extra`、`version`、`created_at` 和 `updated_at`。
+用户资料保存在 `user` 表，用户组织成员关系保存在 `org_user` 表。同一 UID 可关联多个组织；各组织的角色与权限仍按当前 `org_id` 隔离。
 
 项目根目录的 Compose 配置统一编排 MySQL、Go API 和 React/Nginx 前端；`scripts/run.sh` 封装了启动、停止、重启、构建、日志和状态命令。后端同时提供 dev/test/prod 多环境配置。
 
@@ -61,15 +61,15 @@ Hercules Admin 已完成后台管理系统的主要功能闭环，可以视为�
 
 ### 3.2 使用业务 ID 解耦数据库主键
 
-组织的 `parent_id` 保存直接上级组织的数据库主键，用户、角色和权限关联则使用 `org_id`、`uid`、`role_id`、`permission_code` 等业务标识。UID 和 Org ID 由密码学随机源生成，并通过数据库唯一索引兜底。
+组织的 `parent_id` 保存直接上级组织的数据库主键，用户、角色和权限关联则使用 `org_id`、`uid`、`role_id`、`permission_code` 等业务标识。用户表不保存 `org_id`，组织归属统一通过 `org_user(uid, org_id)` 查询。UID 和 Org ID 由密码学随机源生成，并通过数据库唯一索引兜底。
 
 当前 `org_id` 实际按全局唯一处理，而不是只在某个父组织内唯一。这能简化用户归属和跨表查询，但也意味着未来若要支持“不同组织树可重复编号”，需要调整关联模型。
 
 ### 3.3 用隐藏角色复用直接权限模型
 
-用户直接权限没有新增关联表，而是为用户创建负数 `role_id` 的隐藏个人角色，继续复用 `user_role` 和 `role_permission`。
+用户直接权限没有新增权限关联表，而是为用户在每个组织创建独立的负数 `role_id` 隐藏个人角色，继续复用 `user_role` 和 `role_permission`。
 
-这满足了六张表的约束并统一了权限查询路径；代价是角色 ID 带有内部语义，角色分配、移动组织和删除用户时都必须同步清理个人角色。目前这些清理逻辑已在事务中实现。
+角色 ID 带有内部语义，角色分配和删除用户时都必须同步清理对应组织的个人角色。目前这些清理逻辑已在事务中实现。
 
 ### 3.4 不使用数据库外键
 

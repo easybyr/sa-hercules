@@ -16,6 +16,7 @@ from app.schema.permission import (
     PermissionView,
 )
 from app.service.access import AccessGuard
+from app.service.helpers import permission_operation_log, permission_snapshot
 from app.service.views import permission_view
 
 
@@ -95,15 +96,23 @@ class PermissionService:
                 "PERMISSION_NAME_EXISTS", "组织内权限名称已存在，请重新输入权限名称"
             )
 
-        created = await self._store.create_permission(
-            Permission(
-                code=code,
-                name=name,
-                description=payload.description,
-                org_id=payload.org_id,
-                version=1,
-            )
+        item = Permission(
+            code=code,
+            name=name,
+            description=payload.description,
+            org_id=payload.org_id,
+            version=1,
         )
+        operation = permission_operation_log(
+            claims.uid,
+            payload.org_id,
+            "permission",
+            0,
+            "permission.create",
+            None,
+            permission_snapshot(item),
+        )
+        created = await self._store.create_permission(item, operation)
         return permission_view(created)
 
     async def update(
@@ -131,8 +140,24 @@ class PermissionService:
                 "PERMISSION_NAME_EXISTS", "组织内权限名称已存在，请重新输入权限名称"
             )
 
+        before = permission_snapshot(item)
+        after = {
+            **before,
+            "name": name,
+            "description": payload.description,
+            "version": payload.version + 1,
+        }
+        operation = permission_operation_log(
+            claims.uid,
+            org_id,
+            "permission",
+            item.id,
+            "permission.update",
+            before,
+            after,
+        )
         affected = await self._store.update_permission(
-            org_id, code, name, payload.description, payload.version
+            org_id, code, name, payload.description, payload.version, operation
         )
         if affected == 0:
             raise apperror.version_conflict()
@@ -149,4 +174,13 @@ class PermissionService:
         item = await self._store.find_permission(org_id, code)
         if item is None:
             raise apperror.not_found("权限")
-        await self._store.delete_permission(org_id, code)
+        operation = permission_operation_log(
+            claims.uid,
+            org_id,
+            "permission",
+            item.id,
+            "permission.delete",
+            permission_snapshot(item),
+            None,
+        )
+        await self._store.delete_permission(org_id, code, operation)

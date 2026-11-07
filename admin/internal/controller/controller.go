@@ -2,6 +2,8 @@ package controller
 
 import (
 	"net/http"
+	"strings"
+	"unicode"
 
 	"github.com/example/sa-hercules/admin/internal/middleware"
 	"github.com/example/sa-hercules/admin/internal/service"
@@ -28,40 +30,42 @@ func (c *Controller) RegisterRoutes(server *ghttp.Server, mw *middleware.Middlew
 		group.GET("/health", c.Health)
 		group.POST("/auth/login", c.Login)
 		group.POST("/auth/register", c.Register)
-		group.GET("/public/organizations/search", c.SearchOrganizations)
+		group.GET("/public/tenants/search", c.SearchTenants)
 
 		group.Group("/", func(protected *ghttp.RouterGroup) {
 			protected.Middleware(mw.Auth)
 			protected.GET("/me", c.Me)
 			protected.PUT("/me", c.UpdateMe)
 			protected.GET("/access/check", c.CheckAccess)
+			protected.GET("/access/user-permission", c.CheckUserPermission)
 
-			protected.GET("/organizations", c.ListOrganizations)
-			protected.GET("/organizations/tree", c.OrganizationTree)
-			protected.POST("/organizations", c.CreateOrganization)
-			protected.PUT("/organizations/:id", c.UpdateOrganization)
-			protected.DELETE("/organizations/:id", c.DeleteOrganization)
+			protected.GET("/tenants", c.ListTenants)
+			protected.GET("/tenants/tree", c.TenantTree)
+			protected.POST("/tenants", c.CreateTenant)
+			protected.PUT("/tenants/:id", c.UpdateTenant)
+			protected.DELETE("/tenants/:id", c.DeleteTenant)
 
-			protected.GET("/users", c.ListOrgMembers)
-			protected.POST("/users", c.CreateOrgMember)
-			protected.GET("/users/:uid", c.GetOrgMember)
-			protected.PUT("/users/:uid", c.UpdateOrgMember)
-			protected.DELETE("/users/:uid", c.DeleteOrgMember)
+			protected.GET("/users", c.ListTenantMembers)
+			protected.POST("/users", c.CreateTenantMember)
+			protected.GET("/users/:uid", c.GetTenantMember)
+			protected.PUT("/users/:uid", c.UpdateTenantMember)
+			protected.DELETE("/users/:uid", c.DeleteTenantMember)
 			protected.PUT("/users/:uid/roles", c.AssignUserRoles)
 			protected.PUT("/users/:uid/permissions", c.AssignUserPermissions)
-			protected.PUT("/users/:uid/organization", c.AssignUserOrganization)
+			protected.PUT("/users/:uid/tenant", c.AssignUserTenant)
 
 			protected.GET("/permissions", c.ListPermissions)
+			protected.GET("/permissions/apis", c.ListAPIPermissions)
 			protected.POST("/permissions", c.CreatePermission)
-			protected.PUT("/permissions/:orgId/:code", c.UpdatePermission)
-			protected.DELETE("/permissions/:orgId/:code", c.DeletePermission)
+			protected.PUT("/permissions/:tenantId/:code", c.UpdatePermission)
+			protected.DELETE("/permissions/:tenantId/:code", c.DeletePermission)
 
 			protected.GET("/roles", c.ListRoles)
 			protected.POST("/roles", c.CreateRole)
-			protected.GET("/roles/:orgId/:roleId", c.RoleDetail)
-			protected.PUT("/roles/:orgId/:roleId", c.UpdateRole)
-			protected.DELETE("/roles/:orgId/:roleId", c.DeleteRole)
-			protected.PUT("/roles/:orgId/:roleId/permissions", c.AssignRolePermissions)
+			protected.GET("/roles/:tenantId/:roleId", c.RoleDetail)
+			protected.PUT("/roles/:tenantId/:roleId", c.UpdateRole)
+			protected.DELETE("/roles/:tenantId/:roleId", c.DeleteRole)
+			protected.PUT("/roles/:tenantId/:roleId/permissions", c.AssignRolePermissions)
 		})
 	})
 }
@@ -80,9 +84,49 @@ func (c *Controller) authorize(r *ghttp.Request, permission string) (*token.Clai
 		response.Error(r, apperror.New(http.StatusUnauthorized, "UNAUTHORIZED", "请先登录"))
 		return nil, false
 	}
+	if r.Router != nil {
+		registeredPermission, err := c.service.PermissionForAPI(
+			r.Context(), r.Method, normalizeAPIRoutePath(r.Router.Uri),
+		)
+		if err != nil {
+			response.Error(r, err)
+			return nil, false
+		}
+		if registeredPermission != "" {
+			permission = registeredPermission
+		}
+	}
 	if err := c.service.RequirePermission(r.Context(), claims, permission); err != nil {
 		response.Error(r, err)
 		return nil, false
 	}
 	return claims, true
+}
+
+func normalizeAPIRoutePath(path string) string {
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	for index, segment := range segments {
+		if strings.HasPrefix(segment, ":") {
+			segments[index] = "{" + camelToSnake(strings.TrimPrefix(segment, ":")) + "}"
+		} else if strings.HasPrefix(segment, "{") && strings.HasSuffix(segment, "}") {
+			name := strings.TrimSuffix(strings.TrimPrefix(segment, "{"), "}")
+			segments[index] = "{" + camelToSnake(name) + "}"
+		}
+	}
+	return "/" + strings.Join(segments, "/")
+}
+
+func camelToSnake(value string) string {
+	var result strings.Builder
+	for index, char := range value {
+		if unicode.IsUpper(char) {
+			if index > 0 {
+				result.WriteByte('_')
+			}
+			result.WriteRune(unicode.ToLower(char))
+			continue
+		}
+		result.WriteRune(char)
+	}
+	return result.String()
 }

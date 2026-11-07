@@ -28,10 +28,12 @@ import {
 } from "lucide-react";
 import { api, session } from "./api";
 import type {
+  APIPermission,
   MeData,
-  Organization,
+  Tenant,
   PageResult,
   Permission,
+  PermissionNodeType,
   Role,
   User,
   UserCreateResult,
@@ -39,14 +41,14 @@ import type {
 } from "./types";
 
 type Page =
-  "overview" | "organizations" | "users" | "roles" | "permissions" | "profile";
+  "overview" | "tenants" | "users" | "roles" | "permissions" | "profile";
 
-const SUPER_ADMIN_ORG_ID = 10000000;
+const SUPER_ADMIN_TENANT_CODE = "10000000";
 const DEFAULT_PAGE_SIZE = 10;
 
 const pageMeta: Record<Page, { title: string; eyebrow: string }> = {
   overview: { title: "运营概览", eyebrow: "Overview" },
-  organizations: { title: "组织架构", eyebrow: "Organization" },
+  tenants: { title: "租户架构", eyebrow: "Tenant" },
   users: { title: "用户管理", eyebrow: "Identity" },
   roles: { title: "角色管理", eyebrow: "Roles" },
   permissions: { title: "权限管理", eyebrow: "Permissions" },
@@ -71,14 +73,14 @@ function pagePath(
   query: string,
   page: number,
   pageSize: number,
-  organizationID = 0,
+  tenantID = 0,
 ) {
   const params = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
   });
   if (query) params.set("q", query);
-  if (organizationID) params.set("org_id", String(organizationID));
+  if (tenantID) params.set("tenant_id", String(tenantID));
   return `${path}?${params.toString()}`;
 }
 
@@ -199,8 +201,8 @@ function App() {
 
         <div className="page-content">
           {page === "overview" && <Overview me={me} onNavigate={setPage} />}
-          {page === "organizations" && (
-            <OrganizationsPage me={me} notify={notify} />
+          {page === "tenants" && (
+            <TenantsPage me={me} notify={notify} />
           )}
           {page === "users" && <UsersPage me={me} notify={notify} />}
           {page === "roles" && <RolesPage me={me} notify={notify} />}
@@ -242,40 +244,40 @@ function AuthScreen({
   const [mode, setMode] = useState<"login" | "register">("login");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [orgQuery, setOrgQuery] = useState("");
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [selectedOrganization, setSelectedOrganization] =
-    useState<Organization | null>(null);
+  const [tenantQuery, setTenantQuery] = useState("");
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [selectedTenant, setSelectedTenant] =
+    useState<Tenant | null>(null);
 
   useEffect(() => {
-    const keyword = orgQuery.trim();
-    if (mode !== "register" || !keyword) {
-      setOrganizations([]);
-      setSelectedOrganization(null);
+    const keyword = tenantQuery.trim();
+    if (!keyword) {
+      setTenants([]);
+      setSelectedTenant(null);
       return;
     }
     let active = true;
     const timeout = window.setTimeout(() => {
       void api
-        .get<Organization[]>(
-          `/api/public/organizations/search?q=${encodeURIComponent(keyword)}`,
+        .get<Tenant[]>(
+          `/api/public/tenants/search?q=${encodeURIComponent(keyword)}`,
         )
         .then((items) => {
           if (!active) return;
-          setOrganizations(items);
-          setSelectedOrganization(items.length === 1 ? items[0] : null);
+          setTenants(items);
+          setSelectedTenant(items.length === 1 ? items[0] : null);
         })
         .catch(() => {
           if (!active) return;
-          setOrganizations([]);
-          setSelectedOrganization(null);
+          setTenants([]);
+          setSelectedTenant(null);
         });
     }, 260);
     return () => {
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [mode, orgQuery]);
+  }, [mode, tenantQuery]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -288,16 +290,18 @@ function AuthScreen({
       setBusy(false);
       return;
     }
-    if (mode === "register" && !selectedOrganization) {
-      setError("请输入完整组织名称或组织 ID，并选择匹配的组织");
+    if (mode === "register" && !selectedTenant) {
+      setError("请输入完整租户名称或租户编码，并选择当前租户");
       setBusy(false);
       return;
     }
+    const tenantCode = selectedTenant?.code || "";
     try {
       if (mode === "login") {
         const result = await api.post<{ token: string }>("/api/auth/login", {
           username,
           password: data.get("password"),
+          tenant_code: tenantCode,
         });
         session.set(result.token);
         await onAuthenticated();
@@ -308,7 +312,7 @@ function AuthScreen({
           nickname: data.get("nickname"),
           phone_num: data.get("phone_num"),
           email: data.get("email"),
-          org_id: selectedOrganization?.org_id,
+          tenant_code: tenantCode,
         });
         setMode("login");
         setError("注册成功，请使用新账号登录");
@@ -332,17 +336,17 @@ function AuthScreen({
         <div className="story-copy">
           <div className="eyebrow">Enterprise access suite</div>
           <h1>
-            让组织与权限，
+            让租户与权限，
             <br />
             清晰地协同生长。
           </h1>
           <p>
-            面向现代团队的组织架构与身份权限工作台。边界明确、实时可见，也足够优雅。
+            面向现代团队的租户架构与身份权限工作台。边界明确、实时可见，也足够优雅。
           </p>
           <div className="story-stats">
             <div>
               <strong>01</strong>
-              <span>组织隔离</span>
+              <span>租户隔离</span>
             </div>
             <div>
               <strong>24h</strong>
@@ -366,8 +370,8 @@ function AuthScreen({
             <h2>{mode === "login" ? "登录管理后台" : "注册新用户"}</h2>
             <p>
               {mode === "login"
-                ? "请输入你的账号信息以继续"
-                : "搜索并选择所属组织后完成注册"}
+                ? "输入账号信息，并选择当前租户以继续"
+                : "搜索并选择所属租户后完成注册"}
             </p>
           </div>
           {error && (
@@ -410,49 +414,55 @@ function AuthScreen({
                 type="email"
                 placeholder="name@company.com"
               />
-              <div className="field">
-                <span>所属组织 *</span>
-                <div className="search-input">
-                  <Search size={17} />
-                  <input
-                    value={orgQuery}
-                    onChange={(event) => {
-                      setOrgQuery(event.target.value);
-                      setOrganizations([]);
-                      setSelectedOrganization(null);
-                    }}
-                    placeholder="输入完整组织名称或组织 ID"
-                    aria-label="所属组织"
-                  />
-                </div>
-                {organizations.length > 0 && (
-                  <div className="auth-organization-results">
-                    {organizations.map((organization) => (
-                      <button
-                        type="button"
-                        className={
-                          selectedOrganization?.org_id === organization.org_id
-                            ? "active"
-                            : ""
-                        }
-                        key={organization.org_id}
-                        onClick={() => setSelectedOrganization(organization)}
-                      >
-                        <Building2 size={17} />
-                        <span>
-                          <strong>{organization.name}</strong>
-                          <small>ORG {organization.org_id}</small>
-                        </span>
-                        {selectedOrganization?.org_id === organization.org_id && (
-                          <BadgeCheck size={17} />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             </>
           )}
+          <div className="field">
+            <span>
+              {mode === "register" ? "加入租户 *" : "当前租户（超级管理员可留空）"}
+            </span>
+            <div className="search-input">
+              <Search size={17} />
+              <input
+                value={tenantQuery}
+                onChange={(event) => {
+                  setTenantQuery(event.target.value);
+                  setTenants([]);
+                  setSelectedTenant(null);
+                }}
+                placeholder={
+                  mode === "login"
+                    ? "超级管理员可留空；其他账号请输入完整租户名称或编码"
+                    : "输入完整租户名称或租户编码"
+                }
+                aria-label={mode === "register" ? "加入租户" : "当前租户"}
+              />
+            </div>
+            {tenants.length > 0 && (
+              <div className="auth-tenant-results">
+                {tenants.map((tenant) => (
+                  <button
+                    type="button"
+                    className={
+                      selectedTenant?.tenant_id === tenant.tenant_id
+                        ? "active"
+                        : ""
+                    }
+                    key={tenant.tenant_id}
+                    onClick={() => setSelectedTenant(tenant)}
+                  >
+                    <Building2 size={17} />
+                    <span>
+                      <strong>{tenant.name}</strong>
+                      <small>TENANT {tenant.code}</small>
+                    </span>
+                    {selectedTenant?.tenant_id === tenant.tenant_id && (
+                      <BadgeCheck size={17} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button className="primary-button auth-submit" disabled={busy}>
             {busy ? (
               <RefreshCw className="spin" size={17} />
@@ -468,16 +478,14 @@ function AuthScreen({
             onClick={() => {
               setMode(mode === "login" ? "register" : "login");
               setError("");
-              setOrgQuery("");
-              setOrganizations([]);
-              setSelectedOrganization(null);
+              setTenantQuery("");
+              setTenants([]);
+              setSelectedTenant(null);
             }}
           >
             {mode === "login" ? "没有账号？立即注册" : "已有账号？返回登录"}
           </button>
-          {mode === "login" && (
-            <div className="demo-tip">初始账号：admin · 密码：admin</div>
-          )}
+          {mode === "login" && <div className="demo-tip">初始管理员账号和密码由环境变量配置</div>}
         </form>
       </section>
     </div>
@@ -503,25 +511,26 @@ function Sidebar({
   }> = [
     { id: "overview", label: "运营概览", icon: LayoutDashboard },
     {
-      id: "organizations",
-      label: "组织架构",
+      id: "tenants",
+      label: "租户架构",
       icon: Building2,
-      permission: "organization.read",
+      permission: "menu.tenant",
     },
-    { id: "users", label: "用户管理", icon: Users, permission: "user.read" },
-    { id: "roles", label: "角色管理", icon: UserCog, permission: "role.read" },
+    { id: "users", label: "用户管理", icon: Users, permission: "menu.user" },
+    { id: "roles", label: "角色管理", icon: UserCog, permission: "menu.role" },
     {
       id: "permissions",
       label: "权限管理",
       icon: ShieldCheck,
-      permission: "permission.read",
+      permission: "menu.permission",
     },
     { id: "profile", label: "个人中心", icon: CircleUserRound },
   ];
-  const allowed = (permission?: string) =>
-    !permission ||
-    me.is_super ||
-    me.permissions.some((item) => item.code === permission);
+  const allowed = (item: (typeof items)[number]) =>
+    (item.id !== "tenants" || me.is_super) &&
+    (!item.permission ||
+      me.is_super ||
+      me.permissions.some((permission) => permission.code === item.permission));
   return (
     <>
       {open && (
@@ -550,7 +559,7 @@ function Sidebar({
         <nav>
           <div className="nav-label">工作空间</div>
           {items
-            .filter((item) => allowed(item.permission))
+            .filter(allowed)
             .map((item) => {
               const Icon = item.icon;
               return (
@@ -567,11 +576,11 @@ function Sidebar({
             })}
         </nav>
         <div className="sidebar-foot">
-          <div className="org-chip">
+          <div className="tenant-chip">
             <Building2 size={17} />
             <div>
-              <small>当前组织</small>
-              <strong>{me.organization.name}</strong>
+              <small>当前租户</small>
+              <strong>{me.tenant.name}</strong>
             </div>
           </div>
         </div>
@@ -592,20 +601,20 @@ function Overview({
   }).format(new Date());
   const quickEntries = ([
     {
-      target: "organizations",
-      permission: "organization.read",
+      target: "tenants",
+      permission: "menu.tenant",
       icon: <Building2 />,
-      description: "维护层级与组织状态",
+      description: "维护层级与租户状态",
     },
     {
       target: "users",
-      permission: "user.read",
+      permission: "menu.user",
       icon: <Users />,
       description: "管理成员与归属关系",
     },
     {
       target: "roles",
-      permission: "role.read",
+      permission: "menu.role",
       icon: <UserCog />,
       description: "配置角色访问能力",
     },
@@ -616,8 +625,9 @@ function Overview({
     description: string;
   }>).filter(
     (entry) =>
-      me.is_super ||
-      me.permissions.some((permission) => permission.code === entry.permission),
+      (entry.target !== "tenants" || me.is_super) &&
+      (me.is_super ||
+        me.permissions.some((permission) => permission.code === entry.permission)),
   );
   return (
     <div className="stack gap-large">
@@ -642,9 +652,9 @@ function Overview({
       <section className="metric-grid">
         <Metric
           icon={<Building2 />}
-          label="所属组织"
-          value={me.organization.name}
-          note={`ORG ${me.organization.org_id}`}
+          label="所属租户"
+          value={me.tenant.name}
+          note={`TENANT ${me.tenant.tenant_id}`}
           tone="violet"
         />
         <Metric
@@ -658,7 +668,7 @@ function Overview({
           icon={<KeyRound />}
           label="权限数量"
           value={String(me.permissions.length)}
-          note="仅限当前组织"
+          note="仅限当前租户"
           tone="mint"
         />
         <Metric
@@ -673,7 +683,7 @@ function Overview({
         <div className="panel access-panel">
           <PanelHead
             title="我的访问能力"
-            subtitle="当前组织下实时生效的角色与权限"
+            subtitle="当前租户下实时生效的角色与权限"
           />
           <div className="overview-access-groups">
             {me.role_accesses.map((access) => (
@@ -753,34 +763,34 @@ function Metric({
   );
 }
 
-function OrganizationsPage({
+function TenantsPage({
   me,
   notify,
 }: {
   me: MeData;
   notify: (text: string) => void;
 }) {
-  const [tree, setTree] = useState<Organization[]>([]);
-  const [allOrganizations, setAllOrganizations] = useState<Organization[]>([]);
+  const [tree, setTree] = useState<Tenant[]>([]);
+  const [allTenants, setAllTenants] = useState<Tenant[]>([]);
   const [query, setQuery] = useState("");
   const searchQuery = useDebouncedValue(query);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [total, setTotal] = useState(0);
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
-  const [selected, setSelected] = useState<Organization | null>(null);
+  const [selected, setSelected] = useState<Tenant | null>(null);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     try {
-      const [data, orgTree] = await Promise.all([
-        api.get<PageResult<Organization>>(
-          pagePath("/api/organizations", searchQuery, page, pageSize),
+      const [data, tenantTree] = await Promise.all([
+        api.get<PageResult<Tenant>>(
+          pagePath("/api/tenants", searchQuery, page, pageSize),
         ),
-        api.get<Organization[]>("/api/organizations/tree"),
+        api.get<Tenant[]>("/api/tenants/tree"),
       ]);
       setTree(data.list);
       setTotal(data.total);
-      setAllOrganizations(orgTree);
+      setAllTenants(tenantTree);
       const lastPage = Math.max(1, Math.ceil(data.total / pageSize));
       if (page > lastPage) setPage(lastPage);
     } catch (e) {
@@ -791,32 +801,32 @@ function OrganizationsPage({
     void load();
   }, [load]);
   const allFlat = useMemo(
-    () => flattenOrganizations(allOrganizations),
-    [allOrganizations],
+    () => flattenTenants(allTenants),
+    [allTenants],
   );
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
     const data = new FormData(event.currentTarget);
-    const parent = data.get("parent_id");
+    const parent = data.get("parent_code");
     const name = String(data.get("name") || "").trim();
     if (!name) {
-      setError("请输入组织名称");
+      setError("请输入租户名称");
       return;
     }
     try {
       if (modal === "create") {
-        await api.post("/api/organizations", {
+        await api.post("/api/tenants", {
           name,
-          parent_id: parent ? Number(parent) : null,
+          parent_code: parent ? String(parent) : null,
           description: data.get("description"),
           status: Number(data.get("status")),
         });
       } else if (selected) {
-        await api.put(`/api/organizations/${selected.id}`, {
+        await api.put(`/api/tenants/${selected.id}`, {
           name,
-          parent_id: parent ? Number(parent) : null,
+          parent_code: parent ? String(parent) : null,
           description: data.get("description"),
           status: Number(data.get("status")),
           version: selected.version,
@@ -825,17 +835,17 @@ function OrganizationsPage({
       setModal(null);
       setSelected(null);
       await load();
-      notify("组织信息已保存");
+      notify("租户信息已保存");
     } catch (saveError) {
       setError(messageOf(saveError));
     }
   };
-  const remove = async (item: Organization) => {
-    if (!window.confirm(`确认删除组织「${item.name}」？`)) return;
+  const remove = async (item: Tenant) => {
+    if (!window.confirm(`确认删除租户「${item.name}」？`)) return;
     try {
-      await api.delete(`/api/organizations/${item.id}`);
+      await api.delete(`/api/tenants/${item.id}`);
       await load();
-      notify("组织已删除");
+      notify("租户已删除");
     } catch (e) {
       setError(messageOf(e));
     }
@@ -844,7 +854,7 @@ function OrganizationsPage({
     <div className="stack">
       <PageActions
         value={query}
-        searchPlaceholder="搜索组织名称、ID 或描述"
+        searchPlaceholder="搜索租户名称、ID 或描述"
         onSearch={(value) => {
           setQuery(value);
           setPage(1);
@@ -860,32 +870,32 @@ function OrganizationsPage({
             }}
           >
             <Plus size={17} />
-            新建组织
+            新建租户
           </button>
         )}
       </PageActions>
       {error && <div className="form-error">{error}</div>}
       <div className="panel tree-panel">
         <PanelHead
-          title="组织层级"
-          subtitle={`共 ${total} 个组织 · 按更新时间倒序`}
+          title="租户层级"
+          subtitle={`共 ${total} 个租户 · 按更新时间倒序`}
         />
         <div className="tree-list">
           {tree.map((item) => (
-            <OrganizationNode
+            <TenantNode
               key={item.id}
               item={item}
-              depth={organizationDepth(item, allFlat)}
+              depth={tenantDepth(item, allFlat)}
               editable={me.is_super}
-              onEdit={(org) => {
+              onEdit={(tenant) => {
                 setError("");
-                setSelected(org);
+                setSelected(tenant);
                 setModal("edit");
               }}
               onDelete={remove}
             />
           ))}
-          {!tree.length && <Empty text="还没有组织数据" />}
+          {!tree.length && <Empty text="还没有租户数据" />}
         </div>
         <Pagination
           page={page}
@@ -900,25 +910,25 @@ function OrganizationsPage({
       </div>
       {modal && (
         <Modal
-          title={modal === "create" ? "新建组织" : "编辑组织"}
+          title={modal === "create" ? "新建租户" : "编辑租户"}
           onClose={() => setModal(null)}
         >
           <form className="modal-form" onSubmit={save}>
             <Field
-              label="组织名称 *"
+              label="租户名称 *"
               name="name"
               defaultValue={selected?.name}
               required
             />
             <label className="field">
               <span>直接上级</span>
-              <select name="parent_id" defaultValue={selected?.parent_id ?? ""}>
-                <option value="">无上级组织</option>
+              <select name="parent_code" defaultValue={selected?.parent_code ?? ""}>
+                <option value="">无上级租户</option>
                 {allFlat
                   .filter((item) => item.id !== selected?.id)
                   .map((item) => (
-                    <option value={item.id} key={item.id}>
-                      {item.name} · {item.org_id}
+                    <option value={item.code} key={item.id}>
+                      {item.name} · {item.code}
                     </option>
                   ))}
               </select>
@@ -930,7 +940,7 @@ function OrganizationsPage({
             />
             {error && <div className="form-error">{error}</div>}
             <StatusSelect
-              defaultValue={selected?.status === "disabled" ? 2 : 1}
+              defaultValue={selected?.status === "disabled" ? 0 : 1}
             />
             <ModalActions onCancel={() => setModal(null)} />
           </form>
@@ -940,34 +950,34 @@ function OrganizationsPage({
   );
 }
 
-function OrganizationNode({
+function TenantNode({
   item,
   depth,
   editable,
   onEdit,
   onDelete,
 }: {
-  item: Organization;
+  item: Tenant;
   depth: number;
   editable: boolean;
-  onEdit: (item: Organization) => void;
-  onDelete: (item: Organization) => void;
+  onEdit: (item: Tenant) => void;
+  onDelete: (item: Tenant) => void;
 }) {
   return (
     <div className="tree-node-wrap">
       <div className="tree-node" style={{ marginLeft: depth * 28 }}>
         <div className="tree-rail" />
-        <div className="org-symbol">
+        <div className="tenant-symbol">
           <Building2 size={18} />
         </div>
         <div className="tree-main">
           <strong>{item.name}</strong>
           <span>
-            ORG {item.org_id} · {item.description || "暂无描述"}
+            TENANT {item.code} · {item.description || "暂无描述"}
           </span>
         </div>
         <StatusBadge status={item.status} />
-        {editable && item.org_id !== SUPER_ADMIN_ORG_ID && (
+        {editable && item.code !== SUPER_ADMIN_TENANT_CODE && (
           <div className="row-actions">
             <button onClick={() => onEdit(item)}>
               <Pencil size={16} />
@@ -979,7 +989,7 @@ function OrganizationNode({
         )}
       </div>
       {item.children?.map((child) => (
-        <OrganizationNode
+        <TenantNode
           key={child.id}
           item={child}
           depth={depth + 1}
@@ -1002,15 +1012,16 @@ function UsersPage({
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [query, setQuery] = useState("");
-  const [organizationID, setOrganizationID] = useState(0);
+  const [tenantID, setTenantID] = useState(0);
   const searchQuery = useDebouncedValue(query);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [total, setTotal] = useState(0);
   const [modal, setModal] = useState<"create" | "edit" | "access" | null>(null);
   const [selected, setSelected] = useState<UserDetail | null>(null);
+  const [addTenantID, setAddTenantID] = useState(0);
   const [selectedRoleIDs, setSelectedRoleIDs] = useState<number[]>([]);
   const [rolePermissionCodes, setRolePermissionCodes] = useState<
     Record<number, string[]>
@@ -1021,33 +1032,69 @@ function UsersPage({
   const [showInitialPassword, setShowInitialPassword] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [userData, roleData, permissionData, orgTree] = await Promise.all([
+      const tenantTree = me.is_super
+        ? await api.get<Tenant[]>("/api/tenants/tree")
+        : [me.tenant];
+      setTenants(flattenTenants(tenantTree));
+      const [userData, roleData, permissionData] = await Promise.all([
         api.get<PageResult<User>>(
-          pagePath("/api/users", searchQuery, page, pageSize, organizationID),
+          pagePath("/api/users", searchQuery, page, pageSize, tenantID),
         ),
         api.get<PageResult<Role>>("/api/roles?page=1&page_size=1000"),
         api.get<PageResult<Permission>>(
           "/api/permissions?page=1&page_size=1000",
         ),
-        api.get<Organization[]>("/api/organizations/tree"),
       ]);
       setUsers(userData.list);
       setTotal(userData.total);
       setRoles(roleData.list);
       setPermissions(permissionData.list);
-      setOrganizations(flattenOrganizations(orgTree));
       const lastPage = Math.max(1, Math.ceil(userData.total / pageSize));
       if (page > lastPage) setPage(lastPage);
     } catch (e) {
       setError(messageOf(e));
     }
-  }, [organizationID, page, pageSize, searchQuery]);
+  }, [me.is_super, me.tenant, tenantID, page, pageSize, searchQuery]);
   useEffect(() => {
     void load();
   }, [load]);
+  const loadUserInTenant = async (user: User, tenantID: number) => {
+    const detail = await api.get<UserDetail>(
+      `/api/users/${user.uid}?tenant_id=${tenantID}`,
+    );
+    setSelected(detail);
+    const roleIDs = detail.roles.map((role) => role.role_id);
+    setSelectedRoleIDs(roleIDs);
+    setLoadingRoleIDs(roleIDs);
+    try {
+      const roleDetails = await Promise.all(
+        detail.roles.map((role) =>
+          api.get<{ permission_codes: string[] }>(
+            `/api/roles/${role.tenant_id}/${role.role_id}`,
+          ),
+        ),
+      );
+      setRolePermissionCodes(
+        Object.fromEntries(
+          detail.roles.map((role, index) => [
+            role.role_id,
+            roleDetails[index].permission_codes,
+          ]),
+        ),
+      );
+    } finally {
+      setLoadingRoleIDs([]);
+    }
+  };
   const openUser = async (user: User, next: "edit" | "access") => {
     try {
-      const detail = await api.get<UserDetail>(`/api/users/${user.uid}`);
+      const preferredTenantID =
+        tenantID && user.tenant_ids.includes(tenantID)
+          ? tenantID
+          : user.tenant_ids[0];
+      const detail = await api.get<UserDetail>(
+        `/api/users/${user.uid}?tenant_id=${preferredTenantID}`,
+      );
       setSelected(detail);
       if (next === "access") {
         const roleIDs = detail.roles.map((role) => role.role_id);
@@ -1056,7 +1103,7 @@ function UsersPage({
         const roleDetails = await Promise.all(
           detail.roles.map((role) =>
             api.get<{ permission_codes: string[] }>(
-              `/api/roles/${role.org_id}/${role.role_id}`,
+              `/api/roles/${role.tenant_id}/${role.role_id}`,
             ),
           ),
         );
@@ -1088,7 +1135,7 @@ function UsersPage({
     setLoadingRoleIDs((current) => [...current, role.role_id]);
     try {
       const detail = await api.get<{ permission_codes: string[] }>(
-        `/api/roles/${role.org_id}/${role.role_id}`,
+        `/api/roles/${role.tenant_id}/${role.role_id}`,
       );
       setRolePermissionCodes((current) => ({
         ...current,
@@ -1110,13 +1157,13 @@ function UsersPage({
     setError("");
     const data = new FormData(event.currentTarget);
     const username = String(data.get("username") || "").trim();
-    const orgID = Number(data.get("org_id"));
+    const tenantID = modal === "create" ? Number(data.get("tenant_id")) : 0;
     if (!username) {
       setError("请输入用户名");
       return;
     }
-    if (modal === "create" && !orgID) {
-      setError("请选择所属组织");
+    if (modal === "create" && !tenantID) {
+      setError("请选择所属租户");
       return;
     }
     const body = {
@@ -1125,13 +1172,15 @@ function UsersPage({
       phone_num: data.get("phone_num"),
       email: data.get("email"),
       password: data.get("password"),
-      org_id: orgID,
       status: Number(data.get("status")),
       version: selected?.user.version,
     };
     try {
       if (modal === "create") {
-        const result = await api.post<UserCreateResult>("/api/users", body);
+        const result = await api.post<UserCreateResult>("/api/users", {
+          ...body,
+          tenant_id: tenantID,
+        });
         setCreatedUser(result);
         setShowInitialPassword(false);
       } else if (selected) {
@@ -1150,18 +1199,10 @@ function UsersPage({
     if (!selected) return;
     const data = new FormData(event.currentTarget);
     try {
-      const orgID = Number(data.get("org_id"));
-      if (me.is_super && orgID !== selected.user.org_id) {
-        await api.put(`/api/users/${selected.user.uid}/organization`, {
-          org_id: orgID,
-        });
-        setModal(null);
-        await load();
-        notify("所属组织已更新，请重新打开用户以配置新组织的角色和权限");
-        return;
-      }
+      const tenantID = Number(data.get("tenant_id"));
       await api.put(`/api/users/${selected.user.uid}/roles`, {
         role_ids: selectedRoleIDs,
+        tenant_id: tenantID,
       });
       setModal(null);
       await load();
@@ -1170,12 +1211,49 @@ function UsersPage({
       setError(messageOf(e));
     }
   };
-  const remove = async (user: User) => {
-    if (!window.confirm(`确认删除用户「${user.username}」？`)) return;
+  const addTenant = async () => {
+    if (!selected || !addTenantID) return;
     try {
-      await api.delete(`/api/users/${user.uid}`);
+      await api.put(`/api/users/${selected.user.uid}/tenant`, {
+        tenant_id: addTenantID,
+      });
       await load();
-      notify("用户已删除");
+      const current = await api.get<UserDetail>(
+        `/api/users/${selected.user.uid}?tenant_id=${selected.active_tenant_id}`,
+      );
+      setSelected(current);
+      setAddTenantID(0);
+      notify("用户已加入租户");
+    } catch (e) {
+      setError(messageOf(e));
+    }
+  };
+  const remove = async (user: User) => {
+    const targetTenantID =
+      tenantID && user.tenant_ids.includes(tenantID)
+        ? tenantID
+        : !me.is_super
+          ? me.tenant.tenant_id
+          : user.tenant_ids.length === 1
+            ? user.tenant_ids[0]
+            : 0;
+    if (!targetTenantID || !user.tenant_ids.includes(targetTenantID)) {
+      setError("请先按租户筛选，再移除该租户中的用户");
+      return;
+    }
+    const targetTenant = tenants.find(
+      (tenant) => tenant.tenant_id === targetTenantID,
+    );
+    if (
+      !window.confirm(
+        `确认将用户「${user.username}」从租户「${targetTenant?.name || targetTenantID}」中移除？`,
+      )
+    )
+      return;
+    try {
+      await api.delete(`/api/users/${user.uid}?tenant_id=${targetTenantID}`);
+      await load();
+      notify("用户已从租户移除");
     } catch (e) {
       setError(messageOf(e));
     }
@@ -1190,11 +1268,11 @@ function UsersPage({
         }}
         searchPlaceholder="搜索用户名或昵称"
         filter={
-          <OrganizationFilter
-            organizations={organizations}
-            value={organizationID}
+          <TenantFilter
+            tenants={tenants}
+            value={tenantID}
             onChange={(value) => {
-              setOrganizationID(value);
+              setTenantID(value);
               setPage(1);
             }}
           />
@@ -1224,7 +1302,7 @@ function UsersPage({
               <tr>
                 <th>用户</th>
                 <th>UID</th>
-                <th>组织</th>
+                <th>租户</th>
                 <th>状态</th>
                 <th>更新时间</th>
                 <th />
@@ -1248,8 +1326,12 @@ function UsersPage({
                   </td>
                   <td className="mono">{user.uid}</td>
                   <td className="mono">
-                    {organizations.find((org) => org.org_id === user.org_id)
-                      ?.name || user.org_id}
+                    {user.tenant_ids
+                      .map((tenantID) =>
+                        tenants.find((tenant) => tenant.tenant_id === tenantID)?.name ||
+                        String(tenantID),
+                      )
+                      .join("、")}
                   </td>
                   <td>
                     <StatusBadge status={user.status} />
@@ -1337,31 +1419,42 @@ function UsersPage({
               type="password"
               minLength={6}
             />
-            <label className="field">
-              <span>所属组织 *</span>
-              <select
-                name="org_id"
-                disabled={modal === "edit"}
-                defaultValue={modal === "edit" ? selected?.user.org_id : ""}
-                required
-              >
-                {modal === "create" && (
+            {modal === "create" ? (
+              <label className="field">
+                <span>初始租户 *</span>
+                <select name="tenant_id" defaultValue="" required>
                   <option value="" disabled>
-                    请选择所属组织
+                    请选择初始租户
                   </option>
-                )}
-                {organizations
-                  .filter((org) => me.is_super || org.org_id === me.user.org_id)
-                  .map((org) => (
-                    <option key={org.org_id} value={org.org_id}>
-                      {org.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
+                  {tenants
+                    .filter(
+                      (tenant) =>
+                        me.is_super || tenant.tenant_id === me.tenant.tenant_id,
+                    )
+                    .map((tenant) => (
+                      <option key={tenant.tenant_id} value={tenant.tenant_id}>
+                        {tenant.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            ) : (
+              <div className="field">
+                <span>已加入租户</span>
+                <strong>
+                  {selected?.user.tenant_ids
+                    .map(
+                      (tenantID) =>
+                        tenants.find((tenant) => tenant.tenant_id === tenantID)
+                          ?.name || String(tenantID),
+                    )
+                    .join("、")}
+                </strong>
+              </div>
+            )}
             {error && <div className="form-error">{error}</div>}
             <StatusSelect
-              defaultValue={selected?.user.status === "disabled" ? 2 : 1}
+              defaultValue={selected?.user.status === "disabled" ? 0 : 1}
             />
             <ModalActions onCancel={() => setModal(null)} />
           </form>
@@ -1419,25 +1512,67 @@ function UsersPage({
         >
           <form className="modal-form" onSubmit={saveAccess}>
             <label className="field">
-              <span>所属组织</span>
+              <span>所属租户</span>
               <select
-                name="org_id"
-                disabled={!me.is_super}
-                defaultValue={selected.user.org_id}
+                name="tenant_id"
+                value={selected.active_tenant_id}
+                onChange={(event) => {
+                  void loadUserInTenant(
+                    selected.user,
+                    Number(event.target.value),
+                  ).catch((e) => setError(messageOf(e)));
+                }}
               >
-                {organizations.map((org) => (
-                  <option key={org.org_id} value={org.org_id}>
-                    {org.name} · {org.org_id}
-                  </option>
-                ))}
+                {tenants
+                  .filter((tenant) => selected.user.tenant_ids.includes(tenant.tenant_id))
+                  .map((tenant) => (
+                    <option key={tenant.tenant_id} value={tenant.tenant_id}>
+                      {tenant.name} · {tenant.tenant_id}
+                    </option>
+                  ))}
               </select>
             </label>
+            {me.is_super && (
+              <div className="field-grid two">
+                <label className="field">
+                  <span>加入其他租户</span>
+                  <select
+                    value={addTenantID}
+                    onChange={(event) =>
+                      setAddTenantID(Number(event.target.value))
+                    }
+                  >
+                    <option value={0}>选择租户</option>
+                    {tenants
+                      .filter(
+                        (tenant) => !selected.user.tenant_ids.includes(tenant.tenant_id),
+                      )
+                      .map((tenant) => (
+                        <option key={tenant.tenant_id} value={tenant.tenant_id}>
+                          {tenant.name} · {tenant.tenant_id}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <div className="field">
+                  <span>&nbsp;</span>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={!addTenantID}
+                    onClick={() => void addTenant()}
+                  >
+                    加入租户
+                  </button>
+                </div>
+              </div>
+            )}
             <RoleAccessSelector
               roles={roles.filter(
-                (role) => role.org_id === selected.user.org_id,
+                (role) => role.tenant_id === selected.active_tenant_id,
               )}
               permissions={permissions.filter(
-                (permission) => permission.org_id === selected.user.org_id,
+                (permission) => permission.tenant_id === selected.active_tenant_id,
               )}
               selectedRoleIDs={selectedRoleIDs}
               rolePermissionCodes={rolePermissionCodes}
@@ -1461,9 +1596,9 @@ function RolesPage({
 }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [query, setQuery] = useState("");
-  const [organizationID, setOrganizationID] = useState(0);
+  const [tenantID, setTenantID] = useState(0);
   const searchQuery = useDebouncedValue(query);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -1471,40 +1606,42 @@ function RolesPage({
   const [modal, setModal] = useState<"create" | "edit" | "access" | null>(null);
   const [selected, setSelected] = useState<Role | null>(null);
   const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
-  const [roleOrgID, setRoleOrgID] = useState(me.user.org_id);
+  const [roleTenantID, setRoleTenantID] = useState(me.tenant.tenant_id);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     try {
       const [a, b, c] = await Promise.all([
         api.get<PageResult<Role>>(
-          pagePath("/api/roles", searchQuery, page, pageSize, organizationID),
+          pagePath("/api/roles", searchQuery, page, pageSize, tenantID),
         ),
         api.get<PageResult<Permission>>(
           "/api/permissions?page=1&page_size=1000",
         ),
-        api.get<Organization[]>("/api/organizations/tree"),
+        me.is_super
+          ? api.get<Tenant[]>("/api/tenants/tree")
+          : Promise.resolve([me.tenant]),
       ]);
       setRoles(a.list);
       setTotal(a.total);
       setPermissions(b.list);
-      setOrganizations(flattenOrganizations(c));
+      setTenants(flattenTenants(c));
       const lastPage = Math.max(1, Math.ceil(a.total / pageSize));
       if (page > lastPage) setPage(lastPage);
     } catch (e) {
       setError(messageOf(e));
     }
-  }, [organizationID, page, pageSize, searchQuery]);
+  }, [me.is_super, me.tenant, tenantID, page, pageSize, searchQuery]);
   useEffect(() => {
     void load();
   }, [load]);
   const openRoleModal = async (role: Role, next: "edit" | "access") => {
     try {
       const detail = await api.get<{ permission_codes: string[] }>(
-        `/api/roles/${role.org_id}/${role.role_id}`,
+        `/api/roles/${role.tenant_id}/${role.role_id}`,
       );
       setSelected(role);
       setSelectedCodes(detail.permission_codes);
-      setRoleOrgID(role.org_id);
+      setRoleTenantID(role.tenant_id);
       setModal(next);
     } catch (e) {
       setError(messageOf(e));
@@ -1525,11 +1662,11 @@ function RolesPage({
         await api.post("/api/roles", {
           name,
           description: data.get("description"),
-          org_id: Number(data.get("org_id")),
+          tenant_id: Number(data.get("tenant_id")),
           permission_codes: permissionCodes,
         });
       else if (modal === "edit" && selected)
-        await api.put(`/api/roles/${selected.org_id}/${selected.role_id}`, {
+        await api.put(`/api/roles/${selected.tenant_id}/${selected.role_id}`, {
           name,
           description: data.get("description"),
           version: selected.version,
@@ -1537,7 +1674,7 @@ function RolesPage({
         });
       else if (modal === "access" && selected)
         await api.put(
-          `/api/roles/${selected.org_id}/${selected.role_id}/permissions`,
+          `/api/roles/${selected.tenant_id}/${selected.role_id}/permissions`,
           { permission_codes: permissionCodes },
         );
       setModal(null);
@@ -1550,7 +1687,7 @@ function RolesPage({
   const remove = async (role: Role) => {
     if (!window.confirm(`确认删除角色「${role.name}」？`)) return;
     try {
-      await api.delete(`/api/roles/${role.org_id}/${role.role_id}`);
+      await api.delete(`/api/roles/${role.tenant_id}/${role.role_id}`);
       await load();
       notify("角色已删除");
     } catch (e) {
@@ -1567,11 +1704,11 @@ function RolesPage({
           setPage(1);
         }}
         filter={
-          <OrganizationFilter
-            organizations={organizations}
-            value={organizationID}
+          <TenantFilter
+            tenants={tenants}
+            value={tenantID}
             onChange={(value) => {
-              setOrganizationID(value);
+              setTenantID(value);
               setPage(1);
             }}
           />
@@ -1583,7 +1720,7 @@ function RolesPage({
             setError("");
             setSelected(null);
             setSelectedCodes([]);
-            setRoleOrgID(me.user.org_id);
+            setRoleTenantID(me.tenant.tenant_id);
             setModal("create");
           }}
         >
@@ -1594,7 +1731,7 @@ function RolesPage({
       {error && <div className="form-error">{error}</div>}
       <div className="card-grid">
         {roles.map((role) => (
-          <article className="role-card" key={`${role.org_id}-${role.role_id}`}>
+          <article className="role-card" key={`${role.tenant_id}-${role.role_id}`}>
             <div className="role-card-top">
               <span>
                 <UserCog size={20} />
@@ -1602,27 +1739,32 @@ function RolesPage({
               <StatusBadge status="normal" />
             </div>
             <h3>{role.name}</h3>
+            {role.is_system !== 0 && <small>系统角色</small>}
             <p>{role.description || "暂无角色描述"}</p>
             <div className="role-meta">
               <span>ROLE ID</span>
               <strong>{role.role_id}</strong>
-              <span>ORG</span>
+              <span>TENANT</span>
               <strong>
-                {organizations.find((org) => org.org_id === role.org_id)
-                  ?.name || role.org_id}
+                {tenants.find((tenant) => tenant.tenant_id === role.tenant_id)
+                  ?.name || role.tenant_id}
               </strong>
             </div>
             <div className="role-actions">
-              <button onClick={() => void openRoleModal(role, "access")}>
-                <ShieldCheck size={16} />
-                配置权限
-              </button>
-              <button onClick={() => void openRoleModal(role, "edit")}>
-                <Pencil size={16} />
-              </button>
-              <button className="danger" onClick={() => void remove(role)}>
-                <Trash2 size={16} />
-              </button>
+              {role.is_system === 0 && (
+                <>
+                  <button onClick={() => void openRoleModal(role, "access")}>
+                    <ShieldCheck size={16} />
+                    配置权限
+                  </button>
+                  <button onClick={() => void openRoleModal(role, "edit")}>
+                    <Pencil size={16} />
+                  </button>
+                  <button className="danger" onClick={() => void remove(role)}>
+                    <Trash2 size={16} />
+                  </button>
+                </>
+              )}
             </div>
           </article>
         ))}
@@ -1653,23 +1795,23 @@ function RolesPage({
           <form className="modal-form" onSubmit={save}>
             {modal === "create" && (
               <label className="field">
-                <span>所属组织 *</span>
+                <span>所属租户 *</span>
                 <select
-                  name="org_id"
-                  value={roleOrgID}
+                  name="tenant_id"
+                  value={roleTenantID}
                   onChange={(event) => {
-                    setRoleOrgID(Number(event.target.value));
+                    setRoleTenantID(Number(event.target.value));
                     setSelectedCodes([]);
                   }}
                   required
                 >
-                  {organizations
+                  {tenants
                     .filter(
-                      (org) => me.is_super || org.org_id === me.user.org_id,
+                      (tenant) => me.is_super || tenant.tenant_id === me.tenant.tenant_id,
                     )
-                    .map((org) => (
-                      <option key={org.org_id} value={org.org_id}>
-                        {org.name} · {org.org_id}
+                    .map((tenant) => (
+                      <option key={tenant.tenant_id} value={tenant.tenant_id}>
+                        {tenant.name} · {tenant.tenant_id}
                       </option>
                     ))}
                 </select>
@@ -1689,14 +1831,14 @@ function RolesPage({
                   defaultValue={selected?.description}
                 />
                 <CheckGroup
-                  key={`${modal}-${roleOrgID}`}
+                  key={`${modal}-${roleTenantID}`}
                   title="角色权限"
                   name="permissions"
                   items={permissions
                     .filter(
                       (permission) =>
-                        permission.org_id ===
-                        (modal === "create" ? roleOrgID : selected?.org_id),
+                        permission.tenant_id ===
+                        (modal === "create" ? roleTenantID : selected?.tenant_id),
                     )
                     .map((permission) => ({
                       key: permission.code,
@@ -1712,7 +1854,7 @@ function RolesPage({
                 name="permissions"
                 items={permissions
                   .filter(
-                    (permission) => permission.org_id === selected?.org_id,
+                    (permission) => permission.tenant_id === selected?.tenant_id,
                   )
                   .map((permission) => ({
                     key: permission.code,
@@ -1739,39 +1881,76 @@ function PermissionsPage({
   notify: (text: string) => void;
 }) {
   const [items, setItems] = useState<Permission[]>([]);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [registeredAPIs, setRegisteredAPIs] = useState<APIPermission[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [query, setQuery] = useState("");
-  const [organizationID, setOrganizationID] = useState(0);
+  const [tenantID, setTenantID] = useState(0);
   const searchQuery = useDebouncedValue(query);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [total, setTotal] = useState(0);
   const [modal, setModal] = useState<"create" | "copy" | "edit" | null>(null);
   const [selected, setSelected] = useState<Permission | null>(null);
+  const [nodeType, setNodeType] = useState<PermissionNodeType>("MENU");
+  const [permissionCode, setPermissionCode] = useState("");
+  const [selectedAPIs, setSelectedAPIs] = useState<string[]>([]);
   const [error, setError] = useState("");
+  const registeredPaths = useMemo(
+    () => Array.from(new Set(registeredAPIs.map((item) => item.path))).sort(),
+    [registeredAPIs],
+  );
+  const methodsByPath = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    registeredAPIs.forEach((item) => {
+      result[item.path] = [...(result[item.path] || []), item.method];
+    });
+    return result;
+  }, [registeredAPIs]);
+  const permissionByPath = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    registeredAPIs.forEach((item) => {
+      if (item.permission_code) {
+        result[item.path] = Array.from(
+          new Set([...(result[item.path] || []), item.permission_code]),
+        );
+      }
+    });
+    return result;
+  }, [registeredAPIs]);
+  const isAPIUnavailable = (path: string) => {
+    const assignedCodes = permissionByPath[path] || [];
+    return (
+      assignedCodes.length > 0 &&
+      !assignedCodes.includes(selected?.code || "")
+    );
+  };
   const load = useCallback(async () => {
     try {
-      const [permissionData, orgTree] = await Promise.all([
+      const [permissionData, tenantTree, apiData] = await Promise.all([
         api.get<PageResult<Permission>>(
           pagePath(
             "/api/permissions",
             searchQuery,
             page,
             pageSize,
-            organizationID,
+            tenantID,
           ),
         ),
-        api.get<Organization[]>("/api/organizations/tree"),
+        me.is_super
+          ? api.get<Tenant[]>("/api/tenants/tree")
+          : Promise.resolve([me.tenant]),
+        api.get<APIPermission[]>("/api/permissions/apis"),
       ]);
       setItems(permissionData.list);
       setTotal(permissionData.total);
-      setOrganizations(flattenOrganizations(orgTree));
+      setTenants(flattenTenants(tenantTree));
+      setRegisteredAPIs(apiData);
       const lastPage = Math.max(1, Math.ceil(permissionData.total / pageSize));
       if (page > lastPage) setPage(lastPage);
     } catch (e) {
       setError(messageOf(e));
     }
-  }, [organizationID, page, pageSize, searchQuery]);
+  }, [me.is_super, me.tenant, tenantID, page, pageSize, searchQuery]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -1781,29 +1960,45 @@ function PermissionsPage({
     const data = new FormData(event.currentTarget);
     const code = String(data.get("code") || "").trim();
     const name = String(data.get("name") || "").trim();
+    const selectedNodeType = String(data.get("node_type")) as PermissionNodeType;
+    const apiPaths = data.getAll("apis").map(String);
+    const prefix = selectedNodeType.toLowerCase();
     if (!name) {
       setError("请输入权限名称");
       return;
     }
+    if (!new RegExp(`^${prefix}\\.[a-z][a-z0-9_]*$`).test(code)) {
+      setError(`权限编码需使用 ${prefix}.xxx 格式`);
+      return;
+    }
+    if (selectedNodeType === "MENU" && apiPaths.length) {
+      setError("菜单权限不能关联 API");
+      return;
+    }
     if (
-      modal !== "edit" &&
-      !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(code)
+      (selectedNodeType === "BUTTON" || selectedNodeType === "API") &&
+      !apiPaths.length
     ) {
-      setError("权限编码需使用类似 report.read 的小写点分格式");
+      setError(`${selectedNodeType === "API" ? "API" : "按钮"}权限至少需要关联一个 API`);
       return;
     }
     try {
       if (modal !== "edit")
         await api.post("/api/permissions", {
           code,
+          node_type: selectedNodeType,
+          apis: apiPaths,
           name,
           description: data.get("description"),
-          org_id: Number(data.get("org_id")),
+          tenant_id: Number(data.get("tenant_id")),
         });
       else if (selected)
         await api.put(
-          `/api/permissions/${selected.org_id}/${encodeURIComponent(selected.code)}`,
+          `/api/permissions/${selected.tenant_id}/${encodeURIComponent(selected.code)}`,
           {
+            code,
+            node_type: selectedNodeType,
+            apis: apiPaths,
             name,
             description: data.get("description"),
             version: selected.version,
@@ -1811,7 +2006,7 @@ function PermissionsPage({
         );
       setModal(null);
       await load();
-      notify(modal === "copy" ? "权限已复制到目标组织" : "权限信息已保存");
+      notify(modal === "copy" ? "权限已复制到目标租户" : "权限信息已保存");
     } catch (e) {
       setError(messageOf(e));
     }
@@ -1821,7 +2016,7 @@ function PermissionsPage({
       return;
     try {
       await api.delete(
-        `/api/permissions/${item.org_id}/${encodeURIComponent(item.code)}`,
+        `/api/permissions/${item.tenant_id}/${encodeURIComponent(item.code)}`,
       );
       await load();
       notify("权限已删除");
@@ -1839,11 +2034,11 @@ function PermissionsPage({
           setPage(1);
         }}
         filter={
-          <OrganizationFilter
-            organizations={organizations}
-            value={organizationID}
+          <TenantFilter
+            tenants={tenants}
+            value={tenantID}
             onChange={(value) => {
-              setOrganizationID(value);
+              setTenantID(value);
               setPage(1);
             }}
           />
@@ -1854,6 +2049,9 @@ function PermissionsPage({
           onClick={() => {
             setError("");
             setSelected(null);
+            setNodeType("MENU");
+            setPermissionCode("");
+            setSelectedAPIs([]);
             setModal("create");
           }}
         >
@@ -1873,14 +2071,16 @@ function PermissionsPage({
               <tr>
                 <th>权限名称</th>
                 <th>编码</th>
-                <th>组织</th>
+                <th>类型</th>
+                <th>关联 API</th>
+                <th>租户</th>
                 <th>描述</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={`${item.org_id}-${item.code}`}>
+                <tr key={`${item.tenant_id}-${item.code}`}>
                   <td>
                     <div className="permission-name">
                       <span>
@@ -1892,21 +2092,26 @@ function PermissionsPage({
                   <td>
                     <code>{item.code}</code>
                   </td>
-                  <td className="mono">{item.org_id}</td>
+                  <td>{item.node_type === "MENU" ? "菜单" : item.node_type === "BUTTON" ? "按钮" : item.node_type}</td>
+                  <td>{item.apis.length ? `${item.apis.length} 个` : "—"}</td>
+                  <td className="mono">{item.tenant_id}</td>
                   <td>{item.description || "—"}</td>
                   <td>
                     <div className="row-actions">
                       <button
-                        disabled={!me.is_super || organizations.length < 2}
+                        disabled={!me.is_super || tenants.length < 2}
                         title={
-                          me.is_super && organizations.length > 1
-                            ? "复制权限到其他组织"
-                            : "没有可复制到的其他组织"
+                          me.is_super && tenants.length > 1
+                            ? "复制权限到其他租户"
+                            : "没有可复制到的其他租户"
                         }
                         aria-label={`复制权限 ${item.name}`}
                         onClick={() => {
                           setError("");
                           setSelected(item);
+                          setNodeType(item.node_type);
+                          setPermissionCode(item.code);
+                          setSelectedAPIs(item.apis || []);
                           setModal("copy");
                         }}
                       >
@@ -1918,6 +2123,9 @@ function PermissionsPage({
                         onClick={() => {
                           setError("");
                           setSelected(item);
+                          setNodeType(item.node_type);
+                          setPermissionCode(item.code);
+                          setSelectedAPIs(item.apis || []);
                           setModal("edit");
                         }}
                       >
@@ -1962,39 +2170,92 @@ function PermissionsPage({
           onClose={() => setModal(null)}
         >
           <form className="modal-form" onSubmit={save}>
+            <label className="field">
+              <span>权限编码 *</span>
+              <input
+                name="code"
+                value={permissionCode}
+                onChange={(event) => setPermissionCode(event.target.value)}
+                placeholder={`例如 ${nodeType.toLowerCase()}.report`}
+                maxLength={100}
+                readOnly={modal === "copy"}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>权限类型 *</span>
+              <select
+                name="node_type"
+                value={nodeType}
+                onChange={(event) => {
+                  const nextType = event.target.value as PermissionNodeType;
+                  setNodeType(nextType);
+                  setPermissionCode((current) => {
+                    const suffix = current.replace(/^(menu|button|api|data)\./, "");
+                    return suffix ? `${nextType.toLowerCase()}.${suffix}` : current;
+                  });
+                  if (nextType === "MENU") setSelectedAPIs([]);
+                }}
+                required
+              >
+                <option value="MENU">菜单权限</option>
+                <option value="BUTTON">按钮权限</option>
+                <option value="API">API 权限</option>
+                <option value="DATA">数据权限</option>
+              </select>
+            </label>
+            {(nodeType === "BUTTON" ||
+              nodeType === "API" ||
+              nodeType === "DATA") && (
+              <label className="field">
+                <span>关联 API{nodeType === "DATA" ? "（可选）" : " *（可多选）"}</span>
+                <select
+                  name="apis"
+                  multiple
+                  size={6}
+                  value={selectedAPIs}
+                  required={nodeType === "BUTTON" || nodeType === "API"}
+                  onChange={(event) =>
+                    setSelectedAPIs(
+                      Array.from(event.target.selectedOptions, (option) => option.value),
+                    )
+                  }
+                >
+                  {registeredPaths.map((path) => (
+                    <option
+                      key={path}
+                      value={path}
+                      disabled={isAPIUnavailable(path)}
+                    >
+                      {`${(methodsByPath[path] || []).join(", ")} · ${path}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {modal !== "edit" && (
               <>
-                <Field
-                  label="权限编码 *"
-                  name="code"
-                  defaultValue={modal === "copy" ? selected?.code : undefined}
-                  placeholder="例如 report.read"
-                  pattern="[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+"
-                  title="请使用类似 report.read 的小写点分格式"
-                  readOnly={modal === "copy"}
-                  required
-                />
                 <label className="field">
-                  <span>{modal === "copy" ? "目标组织 *" : "所属组织 *"}</span>
+                  <span>{modal === "copy" ? "目标租户 *" : "所属租户 *"}</span>
                   <select
-                    name="org_id"
-                    defaultValue={modal === "copy" ? "" : me.user.org_id}
+                    name="tenant_id"
+                    defaultValue={modal === "copy" ? "" : me.tenant.tenant_id}
                     required
                   >
                     {modal === "copy" && (
                       <option value="" disabled>
-                        请选择目标组织
+                        请选择目标租户
                       </option>
                     )}
-                    {organizations
+                    {tenants
                       .filter(
-                        (org) =>
-                          (me.is_super || org.org_id === me.user.org_id) &&
-                          (modal !== "copy" || org.org_id !== selected?.org_id),
+                        (tenant) =>
+                          (me.is_super || tenant.tenant_id === me.tenant.tenant_id) &&
+                          (modal !== "copy" || tenant.tenant_id !== selected?.tenant_id),
                       )
-                      .map((org) => (
-                        <option key={org.org_id} value={org.org_id}>
-                          {org.name} · {org.org_id}
+                      .map((tenant) => (
+                        <option key={tenant.tenant_id} value={tenant.tenant_id}>
+                          {tenant.name} · {tenant.tenant_id}
                         </option>
                       ))}
                   </select>
@@ -2067,8 +2328,8 @@ function ProfilePage({
             <strong>{me.user.uid}</strong>
           </div>
           <div>
-            <span>组织</span>
-            <strong>{me.organization.name}</strong>
+            <span>租户</span>
+            <strong>{me.tenant.name}</strong>
           </div>
         </div>
         <button className="secondary-button" onClick={() => setEditing(true)}>
@@ -2077,7 +2338,7 @@ function ProfilePage({
         </button>
       </section>
       <section className="panel profile-detail">
-        <PanelHead title="访问档案" subtitle="你的角色与组织内有效权限" />
+        <PanelHead title="访问档案" subtitle="你的角色与租户内有效权限" />
         <div className="detail-block">
           <span className="detail-label">角色</span>
           <div className="permission-cloud">
@@ -2174,47 +2435,47 @@ function PageActions({
   );
 }
 
-function OrganizationFilter({
-  organizations,
+function TenantFilter({
+  tenants,
   value,
   onChange,
 }: {
-  organizations: Organization[];
+  tenants: Tenant[];
   value: number;
   onChange: (value: number) => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const selected = organizations.find((item) => item.org_id === value);
+  const selected = tenants.find((item) => item.tenant_id === value);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const matches = organizations.filter((item) => {
+  const matches = tenants.filter((item) => {
     if (!normalizedQuery) return true;
     return (
       item.name.toLocaleLowerCase().includes(normalizedQuery) ||
-      String(item.org_id).includes(normalizedQuery)
+      String(item.tenant_id).includes(normalizedQuery)
     );
   });
   const displayValue = open
     ? query
     : selected
-      ? `${selected.name} · ${selected.org_id}`
-      : "全部组织";
+      ? `${selected.name} · ${selected.tenant_id}`
+      : "全部租户";
 
-  const selectOrganization = (orgID: number) => {
-    onChange(orgID);
+  const selectTenant = (tenantID: number) => {
+    onChange(tenantID);
     setQuery("");
     setOpen(false);
   };
 
   return (
-    <div className="organization-filter">
-      <div className="search-input organization-filter-input">
+    <div className="tenant-filter">
+      <div className="search-input tenant-filter-input">
         <Building2 size={17} />
         <input
           role="combobox"
-          aria-label="按组织名称或组织 ID 筛选"
+          aria-label="按租户名称或租户 ID 筛选"
           aria-expanded={open}
-          aria-controls="organization-filter-options"
+          aria-controls="tenant-filter-options"
           value={displayValue}
           onFocus={() => {
             setQuery("");
@@ -2225,16 +2486,16 @@ function OrganizationFilter({
             setQuery(event.target.value);
             setOpen(true);
           }}
-          placeholder="按组织名称或 ID 筛选"
+          placeholder="按租户名称或 ID 筛选"
         />
         {value ? (
           <button
-            className="organization-filter-clear"
+            className="tenant-filter-clear"
             type="button"
-            aria-label="清除组织筛选"
-            title="清除组织筛选"
+            aria-label="清除租户筛选"
+            title="清除租户筛选"
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() => selectOrganization(0)}
+            onClick={() => selectTenant(0)}
           >
             <X size={15} />
           </button>
@@ -2244,8 +2505,8 @@ function OrganizationFilter({
       </div>
       {open && (
         <div
-          className="organization-filter-options"
-          id="organization-filter-options"
+          className="tenant-filter-options"
+          id="tenant-filter-options"
           role="listbox"
         >
           <button
@@ -2254,27 +2515,27 @@ function OrganizationFilter({
             role="option"
             aria-selected={value === 0}
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() => selectOrganization(0)}
+            onClick={() => selectTenant(0)}
           >
-            <span>全部组织</span>
+            <span>全部租户</span>
             <small>默认展示全部数据</small>
           </button>
           {matches.map((item) => (
             <button
-              className={value === item.org_id ? "active" : ""}
+              className={value === item.tenant_id ? "active" : ""}
               type="button"
               role="option"
-              aria-selected={value === item.org_id}
-              key={item.org_id}
+              aria-selected={value === item.tenant_id}
+              key={item.tenant_id}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => selectOrganization(item.org_id)}
+              onClick={() => selectTenant(item.tenant_id)}
             >
               <span>{item.name}</span>
-              <small>{item.org_id}</small>
+              <small>{item.tenant_id}</small>
             </button>
           ))}
           {!matches.length && (
-            <div className="organization-filter-empty">未找到匹配组织</div>
+            <div className="tenant-filter-empty">未找到匹配租户</div>
           )}
         </div>
       )}
@@ -2378,7 +2639,7 @@ function StatusSelect({ defaultValue }: { defaultValue: number }) {
       <span>状态</span>
       <select name="status" defaultValue={defaultValue}>
         <option value={1}>正常</option>
-        <option value={2}>禁用</option>
+        <option value={0}>禁用</option>
       </select>
     </label>
   );
@@ -2474,7 +2735,7 @@ function RoleAccessSelector({
               </span>
             </label>
           ))}
-          {!roles.length && <Empty text="当前组织暂无可选角色" />}
+          {!roles.length && <Empty text="当前租户暂无可选角色" />}
         </div>
       </div>
       <div className="role-permission-section">
@@ -2552,7 +2813,7 @@ function CheckGroup({
             </span>
           </label>
         ))}
-        {!items.length && <Empty text="当前组织暂无可选项" />}
+        {!items.length && <Empty text="当前租户暂无可选项" />}
       </div>
     </div>
   );
@@ -2567,26 +2828,24 @@ function Empty({ text }: { text: string }) {
   );
 }
 
-function flattenOrganizations(items: Organization[]): Organization[] {
+function flattenTenants(items: Tenant[]): Tenant[] {
   return items.flatMap((item) => [
     item,
-    ...flattenOrganizations(item.children || []),
+    ...flattenTenants(item.children || []),
   ]);
 }
 
-function organizationDepth(item: Organization, items: Organization[]) {
-  const byID = new Map(
-    items.map((organization) => [organization.id, organization]),
-  );
-  const visited = new Set<number>();
-  let parentID = item.parent_id;
+function tenantDepth(item: Tenant, items: Tenant[]) {
+  const byCode = new Map(items.map((tenant) => [tenant.code, tenant]));
+  const visited = new Set<string>();
+  let parentCode = item.parent_code;
   let depth = 0;
-  while (parentID && !visited.has(parentID)) {
-    visited.add(parentID);
-    const parent = byID.get(parentID);
+  while (parentCode && !visited.has(parentCode)) {
+    visited.add(parentCode);
+    const parent = byCode.get(parentCode);
     if (!parent) break;
     depth += 1;
-    parentID = parent.parent_id;
+    parentCode = parent.parent_code;
   }
   return depth;
 }

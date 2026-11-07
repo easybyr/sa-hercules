@@ -12,6 +12,7 @@ from app.repository.store import Store
 from app.schema.pagination import PageRequest, PageResult
 from app.schema.role import RoleCreateRequest, RoleDetailView, RoleUpdateRequest, RoleView
 from app.service.access import AccessGuard
+from app.service.helpers import permission_operation_log, role_snapshot
 from app.service.identifier import IdentifierGenerator
 from app.service.permission import validate_permission_codes
 from app.service.views import role_view
@@ -87,7 +88,16 @@ class RoleService:
             org_id=payload.org_id,
             version=1,
         )
-        created = await self._store.create_role_with_permissions(role, codes)
+        operation = permission_operation_log(
+            claims.uid,
+            payload.org_id,
+            "role",
+            role.role_id,
+            "role.create",
+            None,
+            {"role": role_snapshot(role), "permission_codes": codes},
+        )
+        created = await self._store.create_role_with_permissions(role, codes, operation)
         return role_view(created)
 
     async def update(
@@ -117,14 +127,34 @@ class RoleService:
                 "ROLE_NAME_EXISTS", "组织内角色名称已存在，请重新输入角色名称"
             )
 
+        previous_codes = await self._store.role_permissions(role_id)
         if payload.permission_codes is None:
-            codes = await self._store.role_permissions(role_id)
+            codes = previous_codes
         else:
             codes = list(payload.permission_codes)
             await validate_permission_codes(self._store, org_id, codes)
 
+        before = {
+            "role": role_snapshot(item),
+            "permission_codes": previous_codes,
+        }
+        after_role = role_snapshot(item)
+        after_role.update(
+            name=name,
+            description=payload.description,
+            version=payload.version + 1,
+        )
+        operation = permission_operation_log(
+            claims.uid,
+            org_id,
+            "role",
+            role_id,
+            "role.update",
+            before,
+            {"role": after_role, "permission_codes": codes},
+        )
         affected = await self._store.update_role_with_permissions(
-            org_id, role_id, name, payload.description, payload.version, codes
+            org_id, role_id, name, payload.description, payload.version, codes, operation
         )
         if affected == 0:
             raise apperror.version_conflict()
@@ -143,7 +173,17 @@ class RoleService:
         role = await self._store.find_role(org_id, role_id)
         if role is None:
             raise apperror.not_found("角色")
-        await self._store.delete_role(org_id, role_id)
+        codes = await self._store.role_permissions(role_id)
+        operation = permission_operation_log(
+            claims.uid,
+            org_id,
+            "role",
+            role_id,
+            "role.delete",
+            {"role": role_snapshot(role), "permission_codes": codes},
+            None,
+        )
+        await self._store.delete_role(org_id, role_id, operation)
 
     async def assign_permissions(
         self,
@@ -159,4 +199,14 @@ class RoleService:
         if role is None or role_id <= 0:
             raise apperror.not_found("角色")
         await validate_permission_codes(self._store, org_id, codes)
-        await self._store.replace_role_permissions(role_id, codes)
+        previous_codes = await self._store.role_permissions(role_id)
+        operation = permission_operation_log(
+            claims.uid,
+            org_id,
+            "role",
+            role_id,
+            "role.permissions.replace",
+            {"permission_codes": previous_codes},
+            {"permission_codes": codes},
+        )
+        await self._store.replace_role_permissions(role_id, codes, operation)

@@ -11,47 +11,61 @@ import (
 	"github.com/example/sa-hercules/admin/pkg/password"
 )
 
-// Login 验证用户并签发令牌。
 func (s *Service) Login(ctx context.Context, input *model.LoginInput) (map[string]any, error) {
 	user, err := s.store.FindUserByUsername(ctx, strings.TrimSpace(input.Username))
 	if err != nil {
 		return nil, err
 	}
-	if user.ID == 0 || !password.Verify(user.Password, input.Password) {
+	if user.ID == 0 || !password.Verify(user.PasswordHash, input.Password) {
 		return nil, apperror.New(http.StatusUnauthorized, "INVALID_CREDENTIALS", "用户名或密码错误")
 	}
 	if consts.Status(user.Status) != consts.StatusNormal {
 		return nil, apperror.New(http.StatusForbidden, "USER_DISABLED", "用户已被禁用")
 	}
-	organization, err := s.store.FindOrganizationByOrgID(ctx, user.OrgID)
-	if err != nil {
-		return nil, err
-	}
-	if organization.ID == 0 || consts.Status(organization.Status) != consts.StatusNormal {
-		return nil, apperror.New(http.StatusForbidden, "ORGANIZATION_DISABLED", "所属组织不可用")
-	}
 	isSuper := user.UID == consts.SuperAdminUID
-	accessToken, err := s.tokens.Issue(user.UID, user.OrgID, user.Username, isSuper)
+	tenantCode := strings.TrimSpace(input.TenantCode)
+	if tenantCode == "" && isSuper {
+		tenantCode = consts.SuperAdminTenantCode
+	}
+	if tenantCode == "" {
+		return nil, apperror.New(http.StatusBadRequest, "TENANT_CODE_REQUIRED", "请选择登录租户")
+	}
+	tenant, err := s.store.FindTenantByCode(ctx, tenantCode)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{
-		"token":      accessToken,
-		"token_type": "Bearer",
-		"expires_in": s.tokens.ExpiresIn(),
-		"user":       userView(user),
-	}, nil
+	if tenant.ID == 0 || consts.Status(tenant.Status) != consts.StatusNormal {
+		return nil, apperror.New(http.StatusForbidden, "TENANT_DISABLED", "租户不存在或不可用")
+	}
+	belongs, err := s.store.UserBelongsToTenant(ctx, user.UID, tenant.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !belongs {
+		return nil, apperror.New(http.StatusForbidden, "TENANT_DENIED", "用户未加入该租户")
+	}
+	accessToken, err := s.tokens.Issue(user.UID, tenant.ID, user.Username, isSuper)
+	if err != nil {
+		return nil, err
+	}
+	view, err := s.userView(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"token": accessToken, "token_type": "Bearer", "expires_in": s.tokens.ExpiresIn(), "user": view}, nil
 }
 
-// Register 注册有效组织内的新用户。
 func (s *Service) Register(ctx context.Context, input *model.RegisterInput) (*model.UserView, error) {
+	tenant, err := s.store.FindTenantByCode(ctx, strings.TrimSpace(input.TenantCode))
+	if err != nil {
+		return nil, err
+	}
+	if tenant.ID == 0 || tenant.Status != int(consts.StatusNormal) {
+		return nil, apperror.New(http.StatusBadRequest, "INVALID_TENANT", "租户不存在或不可用")
+	}
 	return s.createUserRecord(ctx, &userCreateData{
-		Username: input.Username,
-		Password: input.Password,
-		Nickname: input.Nickname,
-		PhoneNum: input.PhoneNum,
-		Email:    input.Email,
-		OrgID:    input.OrgID,
+		Username: input.Username, Password: input.Password, Nickname: input.Nickname,
+		PhoneNum: input.PhoneNum, Email: input.Email, TenantID: tenant.ID,
 	}, int(consts.StatusNormal))
 }
 
@@ -61,15 +75,11 @@ type userCreateData struct {
 	Nickname string
 	PhoneNum string
 	Email    string
-	OrgID    int64
+	TenantID int64
 }
 
-func (s *Service) createUserRecord(
-	ctx context.Context,
-	input *userCreateData,
-	status int,
-) (*model.UserView, error) {
-	if err := validateOrgID(input.OrgID); err != nil {
+func (s *Service) createUserRecord(ctx context.Context, input *userCreateData, status int) (*model.UserView, error) {
+	if err := validateTenantID(input.TenantID); err != nil {
 		return nil, err
 	}
 	username := strings.TrimSpace(input.Username)
@@ -83,12 +93,12 @@ func (s *Service) createUserRecord(
 	if existing.ID != 0 {
 		return nil, apperror.New(http.StatusConflict, "USERNAME_EXISTS", "用户名已存在")
 	}
-	organization, err := s.store.FindOrganizationByOrgID(ctx, input.OrgID)
+	tenant, err := s.store.FindTenantByID(ctx, input.TenantID)
 	if err != nil {
 		return nil, err
 	}
-	if organization.ID == 0 || consts.Status(organization.Status) != consts.StatusNormal {
-		return nil, apperror.New(http.StatusBadRequest, "INVALID_ORGANIZATION", "组织不存在或不可用")
+	if tenant.ID == 0 || tenant.Status != int(consts.StatusNormal) {
+		return nil, apperror.New(http.StatusBadRequest, "INVALID_TENANT", "租户不存在或不可用")
 	}
 	uid, err := s.generateUID(ctx)
 	if err != nil {
@@ -98,14 +108,10 @@ func (s *Service) createUserRecord(
 	if err != nil {
 		return nil, err
 	}
-	item := &model.User{
-		UID: uid, Username: username, Nickname: strings.TrimSpace(input.Nickname),
-		PhoneNum: input.PhoneNum, Email: input.Email, Password: hashed, OrgID: input.OrgID,
-		Status: status, Version: 1,
-	}
-	item.ID, err = s.store.CreateUser(ctx, item)
+	item := &model.User{UID: uid, Username: username, Nickname: strings.TrimSpace(input.Nickname), Phone: input.PhoneNum, Email: input.Email, PasswordHash: hashed, Status: status, Version: 1}
+	item.ID, err = s.store.CreateUser(ctx, item, input.TenantID)
 	if err != nil {
 		return nil, err
 	}
-	return userView(item), nil
+	return s.userView(ctx, item)
 }

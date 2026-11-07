@@ -139,29 +139,29 @@ p {
   border-top: 1px solid #343445;
   padding-top: 16px;
 }
-.org-chip {
+.tenant-chip {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px;
   margin-bottom: 8px;
 }
-.org-chip svg {
+.tenant-chip svg {
   color: #9388ef;
 }
-.org-chip small,
-.org-chip strong {
+.tenant-chip small,
+.tenant-chip strong {
   display: block;
   max-width: 155px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.org-chip small {
+.tenant-chip small {
   color: #6f7186;
   font-size: 10px;
 }
-.org-chip strong {
+.tenant-chip strong {
   margin-top: 2px;
   color: #c5c6d3;
   font-size: 12px;
@@ -651,18 +651,18 @@ p {
   color: #aaaaba;
   background: white;
 }
-.organization-filter {
+.tenant-filter {
   position: relative;
   min-width: 270px;
 }
-.organization-filter-input {
+.tenant-filter-input {
   min-width: 270px;
 }
-.organization-filter-input > svg:last-child {
+.tenant-filter-input > svg:last-child {
   flex: 0 0 auto;
   color: #8da0b8;
 }
-.organization-filter-clear {
+.tenant-filter-clear {
   flex: 0 0 auto;
   width: 25px;
   height: 25px;
@@ -674,11 +674,11 @@ p {
   color: #8da0b8;
   background: transparent;
 }
-.organization-filter-clear:hover {
+.tenant-filter-clear:hover {
   color: #116ddd;
   background: #edf6ff;
 }
-.organization-filter-options {
+.tenant-filter-options {
   position: absolute;
   z-index: 20;
   top: calc(100% + 7px);
@@ -692,7 +692,7 @@ p {
   background: #fff;
   box-shadow: 0 16px 36px rgba(48, 76, 112, 0.16);
 }
-.organization-filter-options button {
+.tenant-filter-options button {
   width: 100%;
   display: flex;
   align-items: center;
@@ -705,21 +705,21 @@ p {
   text-align: left;
   background: transparent;
 }
-.organization-filter-options button:hover,
-.organization-filter-options button.active {
+.tenant-filter-options button:hover,
+.tenant-filter-options button.active {
   color: #116ddd;
   background: #edf6ff;
 }
-.organization-filter-options button span {
+.tenant-filter-options button span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.organization-filter-options button small {
+.tenant-filter-options button small {
   flex: 0 0 auto;
   color: #8da0b8;
 }
-.organization-filter-empty {
+.tenant-filter-empty {
   padding: 16px 10px;
   color: #8da0b8;
   font-size: 11px;
@@ -811,7 +811,7 @@ p {
 .tree-node[style*="0px"] .tree-rail {
   display: none;
 }
-.org-symbol {
+.tenant-symbol {
   width: 37px;
   height: 37px;
   display: grid;
@@ -1246,6 +1246,10 @@ code {
   color: #343644;
   background: white;
 }
+.field select[multiple] {
+  min-height: 150px;
+  padding: 8px 12px;
+}
 .field input:focus,
 .field select:focus {
   border-color: #a69bf0;
@@ -1564,12 +1568,12 @@ code {
   border: 0;
   box-shadow: none;
 }
-.auth-organization-results {
+.auth-tenant-results {
   display: flex;
   flex-direction: column;
   gap: 7px;
 }
-.auth-organization-results button {
+.auth-tenant-results button {
   width: 100%;
   display: flex;
   align-items: center;
@@ -1581,27 +1585,27 @@ code {
   text-align: left;
   background: #fff;
 }
-.auth-organization-results button:hover,
-.auth-organization-results button.active {
+.auth-tenant-results button:hover,
+.auth-tenant-results button.active {
   color: #116ddd;
   border-color: #9fc9ff;
   background: #f0f7ff;
 }
-.auth-organization-results button > span {
+.auth-tenant-results button > span {
   min-width: 0;
   flex: 1;
 }
-.auth-organization-results strong,
-.auth-organization-results small {
+.auth-tenant-results strong,
+.auth-tenant-results small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.auth-organization-results strong {
+.auth-tenant-results strong {
   font-size: 11px;
 }
-.auth-organization-results small {
+.auth-tenant-results small {
   margin-top: 2px;
   color: #8da0b8;
   font-size: 9px;
@@ -1733,18 +1737,18 @@ body {
 .sidebar-foot {
   border-color: #eaf0f8;
 }
-.org-chip {
+.tenant-chip {
   border: 1px solid #e3eefc;
   border-radius: 10px;
   background: #f5f9ff;
 }
-.org-chip svg {
+.tenant-chip svg {
   color: #1677ff;
 }
-.org-chip small {
+.tenant-chip small {
   color: #93a1b5;
 }
-.org-chip strong {
+.tenant-chip strong {
   color: #31435e;
 }
 .main-content {
@@ -1862,7 +1866,7 @@ body {
   background: #f2f7ff;
 }
 .quick-panel button > span,
-.org-symbol,
+.tenant-symbol,
 .person-cell > span,
 .permission-name span,
 .role-card-top > span {
@@ -2071,8 +2075,8 @@ body {
   .search-input {
     min-width: 0;
   }
-  .organization-filter,
-  .organization-filter-input {
+  .tenant-filter,
+  .tenant-filter-input {
     width: 100%;
     min-width: 0;
   }

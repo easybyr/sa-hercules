@@ -17,7 +17,6 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./admin/resource/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -26,6 +25,24 @@ services:
       timeout: 5s
       retries: 20
       start_period: 15s
+    networks:
+      - hercules
+
+  migrate:
+    image: mysql:8.4
+    container_name: hercules-admin-migrate
+    restart: "no"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    command:
+      - sh
+      - -ec
+      - mysql -h mysql -uroot -p"$${MYSQL_ROOT_PASSWORD}" < /migrations/004_init.sql
+    volumes:
+      - ./admin/resource/migrations/004_init.sql:/migrations/004_init.sql:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
     networks:
       - hercules
 
@@ -38,6 +55,8 @@ services:
     environment:
       APP_ENV: prod
       JWT_SECRET: ${JWT_SECRET:-change-this-secret-before-production}
+      SUPER_ADMIN_USERNAME: ${SUPER_ADMIN_USERNAME:?SUPER_ADMIN_USERNAME must be set}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?SUPER_ADMIN_PASSWORD must be set}
       DATABASE_DSN: "mysql:${MYSQL_USER:-hercules}:${MYSQL_PASSWORD:-hercules}@tcp(mysql:3306)/${MYSQL_DATABASE:-hercules_admin}?loc=Asia%2FShanghai&parseTime=true"
       TZ: Asia/Shanghai
     ports:
@@ -45,6 +64,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8000/api/health"]
       interval: 10s

@@ -1,16 +1,17 @@
 export type Status = "normal" | "disabled" | "unknown";
 
-export interface Organization {
+export interface Tenant {
   id: number;
-  org_id: number;
+  tenant_id: number;
+  code: string;
   name: string;
-  parent_id: number | null;
+  parent_code: string | null;
   description: string;
   status: Status;
   version: number;
   created_at?: string;
   updated_at?: string;
-  children?: Organization[];
+  children?: Tenant[];
 }
 
 export interface User {
@@ -20,7 +21,7 @@ export interface User {
   nickname: string;
   phone_num: string;
   email: string;
-  org_id: number;
+  tenant_ids: number[];
   status: Status;
   version: number;
   created_at?: string;
@@ -30,12 +31,22 @@ export interface User {
 export interface Permission {
   id: number;
   code: string;
+  node_type: "MENU" | "BUTTON" | "API" | "DATA";
+  apis: string[];
   name: string;
   description: string;
-  org_id: number;
+  tenant_id: number;
   version: number;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface APIPermission {
+  id: number;
+  method: string;
+  path: string;
+  service: string;
+  permission_code: string;
 }
 
 export interface Role {
@@ -43,11 +54,14 @@ export interface Role {
   role_id: number;
   name: string;
   description: string;
-  org_id: number;
+  tenant_id: number;
+  is_system: number;
   version: number;
   created_at?: string;
   updated_at?: string;
 }
+
+export type PermissionNodeType = Permission["node_type"];
 
 export interface PageResult<T> {
   list: T[];
@@ -61,7 +75,7 @@ export interface MeData {
   roles: Role[];
   permissions: Permission[];
   role_accesses: RoleAccess[];
-  organization: Organization;
+  tenant: Tenant;
   is_super: boolean;
 }
 
@@ -75,7 +89,8 @@ export interface UserDetail {
   roles: Role[];
   permissions: Permission[];
   direct_permission_codes: string[];
-  organization: Organization;
+  tenant: Tenant;
+  active_tenant_id: number;
 }
 
 export interface UserCreateResult {
